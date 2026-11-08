@@ -1,0 +1,18 @@
+[package]
+name = "ships-log"
+version = "0.1.0"
+description = "A starship-style personal journal"
+edition = "2021"
+
+[lib]
+# Tauri 2 needs these crate types so the same code can run on desktop and mobile.
+name = "ships_log_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
