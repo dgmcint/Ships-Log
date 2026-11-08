@@ -161,6 +161,57 @@ textarea.field { min-height: 220px; resize: vertical; line-height: 1.5; }
   border: none; background: transparent; color: var(--muted); font-size: 12px;
 }
 .nav button[aria-current="page"] { color: var(--accent); font-weight: 700; }
-.app.composing .nav { display: none; }
+.app.composing .nav, .app.cover .nav { display: none; }
+
+/* ---------- Rounded console bars ---------- */
+.bar { display: flex; align-items: center; gap: 6px; padding: 10px 16px 0; }
+.bar.bottom { padding: 0 16px 8px; }
+.bar .cap { width: 26px; height: 16px; flex: none; background: var(--accent2); border-radius: 999px 0 0 999px; }
+.bar .fill { flex: 1; height: 16px; background: var(--accent2); }
+.bar .end { width: 16px; height: 16px; flex: none; background: var(--accent); border-radius: 0 999px 999px 0; }
+.bar-label {
+  font-size: 13px; font-weight: 700; color: var(--accent); letter-spacing: 0.12em; text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;
+}
+:root[data-skin="holo"] .bar .cap, :root[data-skin="holo"] .bar .fill { background: none; border: 1px solid var(--accent); height: 10px; }
+:root[data-skin="holo"] .bar .end { height: 10px; border-radius: 0; }
+:root[data-skin="archive"] .bar { display: none; }
+
+/* ---------- Cover ---------- */
+.cover-screen {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; text-align: center; padding: 12px 0 24px;
+}
+.emblem { width: 220px; height: 220px; }
+.cover-title {
+  margin: 0; font-size: 56px; line-height: 1; font-weight: 700; color: var(--accent);
+  letter-spacing: var(--tracking); text-transform: var(--case);
+}
+.cover-sub { font-size: 20px; font-weight: 700; color: var(--accent); letter-spacing: var(--tracking); text-transform: var(--case); }
+.cover-line { font-size: 18px; color: var(--accent2); letter-spacing: var(--tracking); text-transform: var(--case); }
+.cover-form { width: 100%; display: flex; flex-direction: column; gap: 10px; text-align: left; }
+
+/* Console skin: the bolder, blockier look */
+:root[data-skin="console"] .primary { border-radius: 999px; }
+:root[data-skin="console"] .card { border: none; border-left: 14px solid var(--accent2); border-radius: 0 var(--radius) var(--radius) 0; }
+:root[data-skin="console"] .switcher { background: none; border: none; padding: 0; }
+:root[data-skin="console"] .switcher button { background: var(--orange); color: var(--on-accent); border-radius: 999px; }
+:root[data-skin="console"] .switcher button[aria-pressed="true"] { background: var(--accent); }
+:root[data-skin="console"] .nav { background: var(--bg); border-top: none; gap: 6px; }
+:root[data-skin="console"] .nav button { background: var(--accent2); color: var(--on-accent); border-radius: 999px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+:root[data-skin="console"] .nav button[aria-current="page"] { background: var(--accent); color: var(--on-accent); }
+
+/* ---------- Recordings ---------- */
+.recording {
+  display: flex; align-items: center; gap: 12px; padding: 8px 10px;
+  border-radius: var(--radius); background: var(--panel); border: 1px solid var(--line);
+}
+.rec-dot {
+  width: 10px; height: 10px; border-radius: 999px; background: var(--critical);
+  animation: rec-pulse 1.2s ease-in-out infinite;
+}
+#rec-timer { font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: left; }
+@keyframes rec-pulse { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .rec-dot { animation: none; } }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

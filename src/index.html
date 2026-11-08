@@ -5,13 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Ship's Log</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oxanium:wght@400;600;700&family=Share+Tech+Mono&family=Lora:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600;700&family=Oxanium:wght@400;600;700&family=Share+Tech+Mono&family=Lora:wght@400;600;700&display=swap">
   <link rel="stylesheet" href="skins.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="app">
+    <div class="bar" aria-hidden="true">
+      <span class="cap"></span><span id="bar-label" class="bar-label">Ship's Log</span><span class="fill"></span><span class="end"></span>
+    </div>
+
     <main id="screen" class="screen" aria-live="polite"></main>
+
+    <div class="bar bottom" aria-hidden="true">
+      <span class="cap"></span><span class="fill"></span><span class="end"></span>
+    </div>
 
     <nav class="nav" aria-label="Main">
       <button type="button" data-go="logs">
