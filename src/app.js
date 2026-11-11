@@ -2,30 +2,77 @@
 // Runs inside Tauri (data saved by the Rust backend) or in a plain browser
 // (data saved in localStorage) so you can preview it without building.
 
+// Each skin: key, name, a one-line description, and three colors for its preview.
+// The matching colors and shapes live in skins.css and styles.css.
 const SKINS = [
-  ["console", "Console"],
-  ["holo", "Holo"],
-  ["archive", "Archive"],
+  ["console", "Console", "Starship control panel: gold, orange and lavender blocks", ["#000000", "#f7b538", "#a99ae6"]],
+  ["classic", "Classic", "1960s bridge: square panels, grid lines and colored lights", ["#0a0a0b", "#e8483a", "#f2c230"]],
+  ["vector", "Vector", "Film-era readouts: thin amber and green line drawings", ["#050403", "#ffb000", "#7dd3a8"]],
+  ["pioneer", "Pioneer", "Early starship: boxy steel panels and push buttons", ["#0d1218", "#6fb7e8", "#e8a04a"]],
+  ["flare", "Flare", "Frosted glass lit with fluorescent cyan, green and pink", ["#0b2152", "#19e6ff", "#ff5ad1"]],
+  ["daylight", "Daylight", "Bright bridge: white and blue with a light streak", ["#eaf2fb", "#0a63cc", "#0b5c7a"]],
+  ["glass", "Glass", "Tinted glass tiles on a warm dark backdrop, with a tile home screen", ["#2a0f08", "#4fa3b8", "#bfeff0"]],
+  ["holo", "Holo", "Modern projection: glowing cyan outlines", ["#04121c", "#2fd3e8", "#7fe7c4"]],
+  ["archive", "Archive", "Library computer: navy with gold, steel blue and silver", ["#050d21", "#e8c46a", "#7fb0ff"]],
 ];
 
+// Each label has a plain name and a ship name; Settings chooses which is shown.
 const LOG_TYPES = [
-  ["personal", "Personal"],
-  ["engineering", "Engineering"],
-  ["medical", "Medical"],
-  ["science", "Science"],
-  ["away", "Away mission"],
+  ["personal", "Personal", "Personal Log"],
+  ["engineering", "Engineering", "Engineering"],
+  ["medical", "Medical", "Sick Bay"],
+  ["science", "Science", "Science Station"],
+  ["away", "Away mission", "Away Mission"],
 ];
 
+// key, plain name, color, ship name, short ship name (for narrow buttons)
 const CONDITIONS = [
-  ["calm", "Calm", "var(--accent2)"],
-  ["caution", "Caution", "var(--caution)"],
-  ["critical", "Critical", "var(--critical)"],
+  ["calm", "Calm", "var(--accent2)", "Condition Green", "Green"],
+  ["caution", "Caution", "var(--caution)", "Yellow Alert", "Yellow alert"],
+  ["critical", "Critical", "var(--critical)", "Red Alert", "Red alert"],
 ];
 
-const typeLabel = (k) => (LOG_TYPES.find(([key]) => key === k) || [k, k])[1];
+/**
+ * Picks the ship name or the plain one, by the "Ship terms" setting.
+ * Ship names are remembered with their plain meaning, so hovering over one
+ * on a computer shows what it does (see addPlainTips).
+ */
+const PLAIN_FOR = new Map();
+const T = (plain, ship) => {
+  if (!state.prefs.shipTerms) return plain;
+  if (plain !== ship) PLAIN_FOR.set(ship, plain);
+  return ship;
+};
+
+const typePlain = (k) => (LOG_TYPES.find(([key]) => key === k) || [k, k])[1];
+const typeLabel = (k) => {
+  const t = LOG_TYPES.find(([key]) => key === k);
+  return t ? (state.prefs.shipTerms ? t[2] : t[1]) : k;
+};
+
+/** Gives every ship name on screen a hover tip with its plain meaning. */
+function addPlainTips() {
+  if (!state.prefs.shipTerms) return;
+  const walker = document.createTreeWalker(document.querySelector(".app"), NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const plain = PLAIN_FOR.get(n.nodeValue.trim());
+    const el = n.parentElement;
+    // Log-type tags carry their own tips: "Engineering" is both a log type and a screen.
+    if (!plain || !el || el.closest(".pill, .pills, .nav")) continue;
+    (el.closest("button, label") || el).title = plain;
+  }
+}
 const typeColor = (k) =>
   k === "personal" ? "var(--accent)" : k === "away" ? "var(--muted)" : "var(--accent2)";
-const condition = (k) => CONDITIONS.find(([key]) => key === k) || CONDITIONS[0];
+const condition = (k) => {
+  const c = CONDITIONS.find(([key]) => key === k) || CONDITIONS[0];
+  return [c[0], T(c[1], c[3]), c[2]];
+};
+/** Text for the condition tag: "Condition: Calm", or "Yellow Alert" in ship terms. */
+const conditionTag = (k) => {
+  const c = CONDITIONS.find(([key]) => key === k) || CONDITIONS[0];
+  return T("Condition: " + c[1], c[3]);
+};
 
 // ---------- Storage ----------
 
@@ -273,12 +320,23 @@ const state = {
   place: null,
   mediaDir: "",
   textColor: "", // "" follows the skin
+  // Display options, set in Settings.
+  prefs: {
+    accent: "",        // "" follows the skin
+    alertMode: "subtle", // "off" | "subtle" | "full": how much a log's Condition recolors the app
+    readout: true,     // activity readout on the Logs screen
+    glyphs: true,      // line graphics on log cards
+    iconsOnly: false,  // icons in place of words on buttons
+    glassClear: false, // Glass skin: clear tiles with no tint
+    shipTerms: true,   // ship names (Bridge, Engineering…) in place of plain labels
+  },
 };
 
 try {
   const saved = localStorage.getItem("shipslog.skin");
   if (SKINS.some(([k]) => k === saved)) state.skin = saved;
   state.textColor = localStorage.getItem("shipslog.textColor") || "";
+  Object.assign(state.prefs, JSON.parse(localStorage.getItem("shipslog.prefs") || "{}"));
   Object.assign(state.ship, JSON.parse(localStorage.getItem("shipslog.ship") || "{}"));
 } catch {}
 
@@ -295,8 +353,44 @@ async function refresh() {
   state.entries = await api.list();
 }
 
+/** Picks dark or white text for a background color, whichever reads better. */
+function readableOn(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin(n >> 16) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return L > 0.3 ? "#0a0f18" : "#ffffff";
+}
+
+/** Applies the display options: condition colors, accent color, icons-only. */
+function applyLook() {
+  const root = document.documentElement;
+  const p = state.prefs;
+  const alert = (state.entries[0] && state.entries[0].condition) || "calm";
+  root.dataset.alert = alert;
+  root.dataset.alertMode = p.alertMode;
+  if (p.iconsOnly) root.dataset.icons = "on"; else delete root.dataset.icons;
+  if (p.glassClear && state.skin === "glass") root.dataset.clear = "on"; else delete root.dataset.clear;
+  // A full Caution or Critical recolor takes over from the chosen accent color.
+  const alertWins = p.alertMode === "full" && alert !== "calm";
+  if (/^#[0-9a-f]{6}$/i.test(p.accent) && !alertWins) {
+    root.style.setProperty("--accent", p.accent);
+    root.style.setProperty("--on-accent", readableOn(p.accent));
+  } else {
+    root.style.removeProperty("--accent");
+    root.style.removeProperty("--on-accent");
+  }
+}
+
+function setPref(key, value) {
+  state.prefs[key] = value;
+  try { localStorage.setItem("shipslog.prefs", JSON.stringify(state.prefs)); } catch {}
+  persistSettings();
+  render();
+}
+
 function render() {
   document.documentElement.dataset.skin = state.skin;
+  applyLook();
   if (state.textColor) document.documentElement.style.setProperty("--entry-text", state.textColor);
   else document.documentElement.style.removeProperty("--entry-text");
   appEl.classList.toggle("composing", state.screen === "compose");
@@ -305,6 +399,12 @@ function render() {
     state.screen === "cover" ? "Personal records" : state.ship.ship || "Ship's Log";
   // The top-left Home button returns to the cover. It rests on the cover itself,
   // and while writing an entry (use the back arrow there, so nothing is lost by accident).
+  const ship = state.prefs.shipTerms;
+  const navNames = { logs: ship ? "Bridge" : "Logs", search: ship ? "Science" : "Search", crew: "Crew", map: ship ? "Navigation" : "Map" };
+  document.querySelectorAll(".nav [data-go]").forEach((b) => {
+    b.querySelector("span").textContent = navNames[b.dataset.go];
+    b.title = { logs: "Logs", search: "Search", crew: "Crew", map: "Map" }[b.dataset.go];
+  });
   const home = document.getElementById("home-btn");
   home.disabled = state.screen === "cover" || state.screen === "compose";
   home.setAttribute("aria-label", home.disabled ? (state.ship.ship || "Ship's Log") : "Home");
@@ -328,9 +428,10 @@ document.querySelectorAll(".nav [data-go]").forEach((b) => {
     if (b.dataset.go === state.screen) b.setAttribute("aria-current", "page");
     else b.removeAttribute("aria-current");
   });
-  const view = { cover: CoverScreen, logs: LogsScreen, compose: ComposeScreen, search: SearchScreen, crew: CrewScreen, map: MapScreen, settings: SettingsScreen }[state.screen];
+  const view = { cover: CoverScreen, logs: LogsScreen, compose: ComposeScreen, search: SearchScreen, crew: CrewScreen, map: MapScreen, settings: SettingsScreen, gallery: GalleryScreen, onthisday: OnThisDayScreen }[state.screen];
   screenEl.replaceChildren(...[view()].flat(Infinity).filter(Boolean));
   fitCoverTitle();
+  addPlainTips();
 }
 
 document.querySelectorAll(".nav [data-go]").forEach((b) =>
@@ -344,27 +445,37 @@ document.getElementById("home-btn").addEventListener("click", () => {
 
 // ---------- Shared pieces ----------
 
-function SkinSwitcher() {
-  return h("div", { class: "switcher", role: "group", "aria-label": "Skin" },
-    SKINS.map(([k, label]) =>
-      h("button", {
-        type: "button",
-        "aria-pressed": String(state.skin === k),
-        onclick: () => {
-          state.skin = k;
-          try { localStorage.setItem("shipslog.skin", k); } catch {}
-          persistSettings();
-          render();
-        },
-      }, label)
+function setSkin(k) {
+  state.skin = k;
+  try { localStorage.setItem("shipslog.skin", k); } catch {}
+  persistSettings();
+  render();
+}
+
+/** The list of skins on the Settings screen. */
+function SkinPicker() {
+  return h("div", { class: "skin-list", role: "group", "aria-label": "Skin" },
+    SKINS.map(([k, name, about, colors]) =>
+      h("button", { type: "button", class: "skin-option", "aria-pressed": String(state.skin === k), onclick: () => setSkin(k) },
+        h("span", { class: "skin-preview", "aria-hidden": "true", style: { background: colors[0] } },
+          h("span", { style: { background: colors[1] } }),
+          h("span", { style: { background: colors[2] } })
+        ),
+        h("span", { class: "stack", style: { gap: "2px", flex: "1", "min-width": "0" } },
+          h("span", { class: "h3" }, name),
+          h("span", { class: "small" }, about)
+        ),
+        state.skin === k ? h("span", { class: "pill" }, "In use") : null
+      )
     )
   );
 }
 
 function EntryCard(e, q) {
-  return h("button", { type: "button", class: "card", onclick: () => openCompose(e) },
+  const glyph = state.prefs.glyphs && !(e.media || []).length;
+  return h("button", { type: "button", class: "card" + (glyph ? " has-glyph" : ""), onclick: () => openCompose(e) },
     h("div", { class: "row" },
-      h("span", { class: "pill", style: { "--c": typeColor(e.logType) } }, typeLabel(e.logType)),
+      h("span", { class: "pill", title: typePlain(e.logType), style: { "--c": typeColor(e.logType) } }, typeLabel(e.logType)),
       h("span", { class: "small row", style: { gap: "6px", "justify-content": "flex-end" } },
         e.locked ? svg(ICON.lock) : null,
         (e.recordings || []).length
@@ -374,7 +485,117 @@ function EntryCard(e, q) {
     ),
     h("h3", { class: "h3" }, highlight(e.title || "Untitled", q)),
     h("p", {}, highlight(snippet(e), q)),
-    (e.media || []).length ? ThumbStrip(e.media) : null
+    (e.media || []).length ? ThumbStrip(e.media) : null,
+    glyph ? TypeGlyph(e.logType) : null
+  );
+}
+
+function svgEl(viewBox, cls, inner, label) {
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  s.setAttribute("viewBox", viewBox);
+  s.setAttribute("class", cls);
+  if (label) { s.setAttribute("role", "img"); s.setAttribute("aria-label", label); }
+  else s.setAttribute("aria-hidden", "true");
+  s.innerHTML = inner; // built from numbers only
+  return s;
+}
+
+/** A small line drawing for each log type, shown in the corner of its card. */
+function TypeGlyph(type) {
+  const g = {
+    away: '<path d="M4 34 C22 34 26 10 46 10 S70 26 92 16"/><circle cx="46" cy="10" r="3" class="f"/><circle cx="92" cy="16" r="3" class="b"/><path d="M20 40v4M46 40v4M72 40v4"/>',
+    engineering: '<path d="M30 40 A22 22 0 1 1 66 40"/><path d="M36 36 A14 14 0 1 1 60 36" class="b"/><path d="M48 22L60 12"/><circle cx="48" cy="22" r="3" class="f"/>',
+    science: '<path d="M10 40 A38 38 0 0 1 86 40"/><path d="M24 40 A24 24 0 0 1 72 40" class="b"/><path d="M38 40 A10 10 0 0 1 58 40"/><path d="M48 40L74 14"/><circle cx="70" cy="18" r="3" class="f"/>',
+    medical: '<path d="M4 26H28L34 12L42 40L50 6L58 30L64 26H92"/>',
+    personal: '<ellipse cx="48" cy="24" rx="40" ry="12" transform="rotate(-14 48 24)"/><circle cx="48" cy="24" r="8" class="b"/><circle cx="84" cy="14" r="3" class="f"/>',
+  }[type];
+  return g ? svgEl("0 0 96 48", "type-glyph", g) : null;
+}
+
+/** Counts logs and words for each of the last seven days, oldest first. */
+function weekActivity() {
+  const days = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    days.push({ date: d, logs: 0, words: 0 });
+  }
+  for (const e of state.entries) {
+    const d = new Date(e.created);
+    d.setHours(0, 0, 0, 0);
+    const slot = days.find((x) => x.date.getTime() === d.getTime());
+    if (!slot) continue;
+    slot.logs += 1;
+    slot.words += (e.body.trim().match(/\S+/g) || []).length;
+  }
+  return days;
+}
+
+/**
+ * The activity readout on the Logs screen, drawn from the last seven days:
+ * ring = share of days with a log, line = words written each day,
+ * bars = logs made each day (today on the right).
+ */
+function ReadoutStrip() {
+  const days = weekActivity();
+  const logs = days.reduce((t, d) => t + d.logs, 0);
+  const words = days.reduce((t, d) => t + d.words, 0);
+  const active = days.filter((d) => d.logs).length;
+  const maxLogs = Math.max(1, ...days.map((d) => d.logs));
+  const maxWords = Math.max(1, ...days.map((d) => d.words));
+
+  const cols = Array.from({ length: 17 }, (_, i) => `M${10 + i * 20} 4V60`).join("");
+  const R = 24, around = 2 * Math.PI * R;
+  const pts = days.map((d, i) => [70 + i * 30, 50 - (d.words / maxWords) * 36]);
+  const line = pts.map(([x, y], i) => `${i ? "L" : "M"}${x} ${y.toFixed(1)}`).join("");
+  const ticks = pts.map(([x]) => `<path d="M${x} 54v5"/>`).join("");
+  const dots = pts.map(([x, y], i) => days[i].logs ? `<circle cx="${x}" cy="${y.toFixed(1)}" r="${i === 6 ? 4 : 2.5}" class="${i === 6 ? "ro-dot2" : "ro-dot"}"/>` : "").join("");
+  const bars = days.map((d, i) => {
+    const hgt = d.logs ? 6 + (d.logs / maxLogs) * 34 : 2;
+    return `<rect x="${272 + i * 10}" y="${(56 - hgt).toFixed(1)}" width="6" height="${hgt.toFixed(1)}" rx="1"${d.logs ? "" : ' class="empty"'}/>`;
+  }).join("");
+
+  const summary = `${logs} ${logs === 1 ? "log" : "logs"} · ${active} of 7 days · ${words} ${words === 1 ? "word" : "words"}`;
+  if (state.skin === "classic") {
+    // Round scope: the week's words as a trace. Lights: one per day. Blocks: logs that day.
+    const sp = days.map((d, i) => [16 + i * 11, 62 - (d.words / maxWords) * 30]);
+    const trace = sp.map(([x, y], i) => `${i ? "L" : "M"}${x} ${y.toFixed(1)}`).join("");
+    const lit = ["#e8483a", "#f2c230", "#6fb2f0", "#58c070"];
+    const names = ["S", "M", "T", "W", "T", "F", "S"];
+    const lights = days.map((d, i) => {
+      const x = 112 + i * 33;
+      const blocks = Array.from({ length: Math.min(d.logs, 4) }, (_, k) => `<rect x="${x}" y="${70 - k * 8}" width="24" height="5" rx="1" fill="${lit[i % 4]}"/>`).join("");
+      return `<rect x="${x}" y="10" width="24" height="24" rx="3" class="${d.logs ? "cl-on" : "cl-off"}" ${d.logs ? `fill="${lit[i % 4]}" style="color:${lit[i % 4]}"` : ""}/>
+              <text x="${x + 12}" y="48" text-anchor="middle" class="cl-day">${names[d.date.getDay()]}</text>${blocks}`;
+    }).join("");
+    return h("div", { class: "readout-wrap" },
+      svgEl("0 0 350 96", "readout scope",
+        `<defs><clipPath id="scope-clip"><circle cx="48" cy="48" r="38"/></clipPath></defs>
+         <circle cx="48" cy="48" r="44" class="cl-bezel"/><circle cx="48" cy="48" r="38" class="cl-screen"/>
+         <g clip-path="url(#scope-clip)"><path class="cl-grid" d="M10 48H86M48 10V86M10 29H86M10 67H86M29 10V86M67 10V86"/>
+         <path class="cl-trace" d="${trace}"/><path class="cl-scan" d="M10 30H86M10 34H86M10 38H86M10 42H86M10 46H86M10 50H86M10 54H86M10 58H86M10 62H86M10 66H86"/></g>
+         <path class="cl-glare" d="M22 30 A32 32 0 0 1 44 16"/>${lights}
+         <path class="cl-rule" d="M108 78H346"/>`,
+        "Last 7 days: " + summary.replace(/ · /g, ", ")),
+      h("div", { class: "small readout-caption" }, T("Last 7 days: ", "Ship's status, 7 days: ") + summary)
+    );
+  }
+  return h("div", { class: "readout-wrap" },
+    svgEl("0 0 350 64", "readout",
+      `<g class="ro-grid"><path d="M0 16H350M0 32H350M0 48H350"/><path d="${cols}"/></g>
+       <g transform="translate(34 32)">
+         <circle r="${R}" class="ro-track"/>
+         <circle r="${R}" class="ro-progress" stroke-dasharray="${((active / 7) * around).toFixed(1)} ${around.toFixed(1)}" transform="rotate(-90)"/>
+         <circle r="15" class="ro-ring"/>
+         <text class="ro-num" y="5" text-anchor="middle">${active}</text>
+       </g>
+       <path class="ro-path" d="${line}"/>
+       <g class="ro-ticks">${ticks}</g>${dots}
+       <g class="ro-bars">${bars}</g>`,
+      "Last 7 days: " + summary.replace(/ · /g, ", ")),
+    h("div", { class: "small readout-caption" }, T("Last 7 days: ", "Ship's status, 7 days: ") + summary)
   );
 }
 
@@ -397,7 +618,7 @@ function ThumbStrip(media) {
 
 /** The app's badge (src/logo.png): replace that file to change it. */
 function Emblem() {
-  return h("img", { src: "logo.png", class: "emblem", alt: "Ship's Log emblem" });
+  return h("span", { class: "emblem-wrap" }, h("img", { src: "logo.png", class: "emblem", alt: "Ship's Log emblem" }));
 }
 
 function CoverScreen() {
@@ -443,34 +664,137 @@ function CoverScreen() {
       ? h("div", { class: "cover-line" }, line)
       : h("div", { class: "muted" }, "Add your name and ship below."),
     h("button", { type: "button", class: "primary", style: { "max-width": "320px" }, onclick: () => go("logs") }, "Open log"),
-    h("button", { type: "button", class: "small-btn", onclick: () => { state.editingShip = true; render(); } }, line ? "Edit details" : "Add details"),
-    SkinSwitcher()
+    h("div", { class: "row", style: { "justify-content": "center", "flex-wrap": "wrap" } },
+      h("button", { type: "button", class: "small-btn", onclick: () => { state.editingShip = true; render(); } }, line ? "Edit details" : "Add details"),
+      h("button", { type: "button", class: "small-btn", onclick: () => go("settings") }, svg(ICON.gear), "Settings")
+    )
   );
 }
 
-function LogsScreen() {
+/** Logs from today's month and day in earlier years, newest first. */
+function logsOnThisDate() {
+  const now = new Date();
+  return state.entries.filter((e) => {
+    const d = new Date(e.created);
+    return d.getMonth() === now.getMonth() && d.getDate() === now.getDate() && d.getFullYear() < now.getFullYear();
+  });
+}
+
+function SubHeader(title) {
+  return h("header", { class: "row", style: { "justify-content": "flex-start", gap: "6px" } },
+    h("button", { type: "button", class: "small-btn icon-btn", "aria-label": "Back", onclick: () => go("logs") }, svg(ICON.back)),
+    h("h1", { class: "title" }, title)
+  );
+}
+
+function OnThisDayScreen() {
+  const now = new Date();
+  const logs = logsOnThisDate();
+  const today = now.toLocaleDateString(undefined, { month: "long", day: "numeric" });
+  const groups = new Map();
+  for (const e of logs) {
+    const years = now.getFullYear() - new Date(e.created).getFullYear();
+    if (!groups.has(years)) groups.set(years, []);
+    groups.get(years).push(e);
+  }
+  return [
+    SubHeader("On this date"),
+    h("div", { class: "muted" }, `Logs written on ${today} in past years`),
+    logs.length
+      ? [...groups].map(([years, list]) => [
+          h("h2", { class: "h2" }, years === 1 ? "1 year ago" : `${years} years ago`),
+          h("div", { class: "list" }, list.map((e) => EntryCard(e))),
+        ])
+      : h("div", { class: "empty" }, `No logs from ${today} in past years yet. What you write today will show up here next year.`),
+  ];
+}
+
+/** Every photo and video from every log, newest first. */
+function GalleryScreen() {
+  const items = [];
+  for (const e of state.entries) for (const m of e.media || []) items.push({ m, e });
+  return [
+    SubHeader(T("Photos & video", "Viewscreen")),
+    h("div", { class: "muted" }, items.length ? `${items.length} from all your logs` : "Photos and videos from all your logs"),
+    items.length
+      ? h("div", { class: "media-grid" }, items.map(({ m, e }) =>
+          h("button", {
+            type: "button", class: "tile", title: e.title || "Untitled",
+            "aria-label": `${m.kind === "video" ? "Video" : "Photo"} from ${e.title || "an untitled log"}`,
+            onclick: () => openViewer(null, m),
+          },
+            m.thumb ? h("img", { src: api.mediaUrl(m.thumb), alt: "" }) : h("span", { class: "tile-icon" }, svg(m.kind === "video" ? ICON.video : ICON.photo)),
+            m.kind === "video" ? h("span", { class: "tile-badge" }, svg(ICON.play), clock(m.seconds)) : null
+          )))
+      : h("div", { class: "empty" }, "Nothing here yet. Add a photo or video when you write an entry."),
+  ];
+}
+
+/** The Glass skin's home: a widget, a grid of icon tiles, and the latest logs. */
+function TileHome() {
   const latest = state.entries[0];
-  const [, condLabel, condColor] = condition(latest ? latest.condition : "calm");
+  const now = new Date();
+  const cond = latest ? latest.condition : "calm";
+  const past = logsOnThisDate().length;
+  const tile = (icon, label, plain, fn, badge) =>
+    h("button", { type: "button", class: "app-tile", title: plain, onclick: fn },
+      h("span", { class: "app-icon" }, svg(icon), badge ? h("span", { class: "app-badge" }, badge) : null),
+      h("span", { class: "app-name" }, label));
+  return [
+    h("section", { class: "widget" },
+      h("div", { class: "row" },
+        h("div", { class: "stack", style: { gap: "0" } },
+          h("h1", { class: "widget-title" }, T("Ship's Log", "Bridge")),
+          h("span", { class: "widget-big", title: formatDate(now) }, stardate(now).toFixed(1))),
+        h("span", { class: "chip", title: conditionTag(cond), style: { "--c": condition(cond)[2] } }, conditionTag(cond))
+      ),
+      state.prefs.readout ? ReadoutStrip() : h("div", { class: "muted" }, formatDate(now))
+    ),
+    BackupReminder(),
+    h("div", { class: "app-grid" },
+      tile(ICON.mic, "Dictate", "Dictate a log", () => openCompose(null, { dictate: true })),
+      tile(ICON.wave, "Record", "Record audio", () => openCompose(null, { record: true })),
+      tile(ICON.pen, "Write", "Write an entry", () => openCompose(null)),
+      tile(ICON.search, T("Search", "Science"), "Search", () => go("search")),
+      tile(ICON.photo, T("Photos", "Viewscreen"), "Photos and video", () => go("gallery")),
+      tile(ICON.clock, "On this date", "Logs from this date in past years", () => go("onthisday"), past || null),
+      tile(ICON.save, T("Backup", "Transporter"), "Backup and restore", () => go("settings")),
+      tile(ICON.gear, T("Settings", "Engineering"), "Settings", () => go("settings"))
+    ),
+    h("div", { class: "row" },
+      h("h2", { class: "h2" }, "Recent logs"),
+      h("span", { class: "muted" }, `${state.entries.length} on file`)
+    ),
+    state.entries.length
+      ? h("div", { class: "list" }, state.entries.map((e) => EntryCard(e)))
+      : h("div", { class: "empty" }, "No logs on file yet. Tap Dictate or Write to make your first entry."),
+  ];
+}
+
+function LogsScreen() {
+  if (state.skin === "glass") return TileHome();
+  const latest = state.entries[0];
+  const [, , condColor] = condition(latest ? latest.condition : "calm");
   const now = new Date();
   return [
     h("header", { class: "stack" },
       h("div", { class: "row" },
-        h("h1", { class: "title" }, "Ship's Log"),
+        h("h1", { class: "title" }, T("Ship's Log", "Bridge")),
         h("button", { type: "button", class: "small-btn icon-btn", "aria-label": "Settings and backup", onclick: () => go("settings") }, svg(ICON.gear))
       ),
       h("div", { class: "row" },
         h("div", { class: "muted" }, `Log date ${stardate(now).toFixed(1)} · ${formatDate(now)}`),
-        h("span", { class: "chip", style: { "--c": condColor } }, "Condition: " + condLabel)
+        h("span", { class: "chip", title: conditionTag(latest ? latest.condition : "calm"), style: { "--c": condColor } }, conditionTag(latest ? latest.condition : "calm"))
       )
     ),
-    SkinSwitcher(),
+    state.prefs.readout ? ReadoutStrip() : null,
     BackupReminder(),
-    h("button", { type: "button", class: "primary", onclick: () => openCompose(null, { dictate: true }) },
+    h("button", { type: "button", class: "primary", title: "Dictate a log", onclick: () => openCompose(null, { dictate: true }) },
       svg(ICON.mic), "Dictate a log"),
     h("div", { class: "row", style: { "justify-content": "center" } },
-      h("button", { type: "button", class: "small-btn", onclick: () => openCompose(null, { record: true }) },
+      h("button", { type: "button", class: "small-btn", title: "Record audio", onclick: () => openCompose(null, { record: true }) },
         svg(ICON.wave), "Record audio"),
-      h("button", { type: "button", class: "small-btn", onclick: () => openCompose(null) },
+      h("button", { type: "button", class: "small-btn", title: "Write an entry", onclick: () => openCompose(null) },
         svg(ICON.pen), "Write")
     ),
     h("div", { class: "row" },
@@ -494,7 +818,7 @@ const canAutoBackup = () => !!tauri && !isPhone();
 const backupUi = { status: null, message: "", error: "", busy: "", restoreArmed: false };
 
 function persistSettings() {
-  api.saveSettings(JSON.stringify({ skin: state.skin, ship: state.ship, textColor: state.textColor })).catch(() => {});
+  api.saveSettings(JSON.stringify({ skin: state.skin, ship: state.ship, textColor: state.textColor, prefs: state.prefs })).catch(() => {});
 }
 
 function applySettings(json) {
@@ -503,10 +827,12 @@ function applySettings(json) {
   if (SKINS.some(([k]) => k === s.skin)) state.skin = s.skin;
   if (s.ship) state.ship = { captain: "", ship: "", registry: "", ...s.ship };
   if (typeof s.textColor === "string") state.textColor = s.textColor;
+  if (s.prefs && typeof s.prefs === "object") Object.assign(state.prefs, s.prefs);
   try {
     localStorage.setItem("shipslog.skin", state.skin);
     localStorage.setItem("shipslog.ship", JSON.stringify(state.ship));
     localStorage.setItem("shipslog.textColor", state.textColor);
+    localStorage.setItem("shipslog.prefs", JSON.stringify(state.prefs));
   } catch {}
   persistSettings();
 }
@@ -568,6 +894,76 @@ async function setAuto(off, every) {
   render();
 }
 
+const ACCENT_COLORS = [
+  ["", "Skin default"],
+  ["#f7b538", "Gold"],
+  ["#ff8a3d", "Orange"],
+  ["#ff6b6b", "Red"],
+  ["#ff5ad1", "Pink"],
+  ["#a99ae6", "Lavender"],
+  ["#5aa2ff", "Blue"],
+  ["#19e6ff", "Cyan"],
+  ["#8dff6a", "Green"],
+];
+
+function Toggle(label, about, key) {
+  const on = !!state.prefs[key];
+  return h("button", { type: "button", class: "toggle", role: "switch", "aria-checked": String(on), onclick: () => setPref(key, !on) },
+    h("span", { class: "stack", style: { gap: "2px", flex: "1", "min-width": "0" } },
+      h("span", { class: "h3" }, label),
+      h("span", { class: "small" }, about)
+    ),
+    h("span", { class: "switch", "aria-hidden": "true" })
+  );
+}
+
+function DisplayOptions() {
+  const p = state.prefs;
+  const custom = p.accent && !ACCENT_COLORS.some(([c]) => c === p.accent);
+  return h("section", { class: "card settings-card" },
+    h("h2", { class: "h2" }, T("Display options", "Main Helm")),
+
+    h("div", { class: "stack" },
+      h("span", { class: "label", id: "accent-label" }, "Accent color"),
+      h("div", { class: "swatches", role: "group", "aria-labelledby": "accent-label" },
+        ACCENT_COLORS.map(([c, name]) =>
+          h("button", {
+            type: "button", class: "swatch" + (c ? "" : " default"), title: name, "aria-label": name,
+            "aria-pressed": String(p.accent === c), style: c ? { "--swatch": c } : null,
+            onclick: () => setPref("accent", c),
+          }, c ? null : h("span", { "aria-hidden": "true" }, "A"))
+        ),
+        h("label", { class: "swatch custom" + (custom ? " selected" : ""), title: "Choose any color", style: custom ? { "--swatch": p.accent } : null },
+          h("span", { class: "sr-only" }, "Choose any color"),
+          svg(ICON.palette),
+          h("input", { type: "color", class: "sr-only", value: p.accent || "#f7b538", onchange: (ev) => setPref("accent", ev.target.value) })
+        )
+      ),
+      h("span", { class: "small" }, "Changes buttons, titles and highlights in every skin. “A” uses the skin's own color.")
+    ),
+
+    h("div", { class: "stack" },
+      h("span", { class: "label", id: "alert-label" }, T("Condition colors", "Alert colors")),
+      h("div", { class: "segment", role: "group", "aria-labelledby": "alert-label" },
+        [["off", "Off"], ["subtle", "Subtle"], ["full", "Full"]].map(([k, name]) =>
+          h("button", { type: "button", "aria-pressed": String(p.alertMode === k), onclick: () => setPref("alertMode", k) }, name)
+        )
+      ),
+      h("span", { class: "small" }, {
+        off: "The app looks the same whatever your latest log's condition is.",
+        subtle: `When your latest log is ${condition("caution")[1]} or ${condition("critical")[1]}, the top bar changes color.`,
+        full: `When your latest log is ${condition("caution")[1]} or ${condition("critical")[1]}, the whole app turns yellow or red.`,
+      }[p.alertMode])
+    ),
+
+    state.skin === "glass" ? Toggle("Clear glass", "Glass skin: see-through tiles with no tint", "glassClear") : null,
+    Toggle("Ship terms", "Names like Bridge, Engineering and Sick Bay. Turn off for plain labels.", "shipTerms"),
+    Toggle(T("Activity readout", "Ship's Status"), T("A graph of your last 7 days on the Logs screen", "A graph of your last 7 days on the Bridge"), "readout"),
+    Toggle("Card graphics", "A small line drawing on each log for its type", "glyphs"),
+    Toggle("Icons instead of words", "Buttons and tags show icons and colors only", "iconsOnly")
+  );
+}
+
 /** A gentle note on the Logs screen when a backup is overdue. */
 function BackupReminder() {
   const s = backupUi.status;
@@ -576,7 +972,7 @@ function BackupReminder() {
   if (!overdue || s.autoFolder) return null;
   return h("div", { class: "notice row", style: { "justify-content": "space-between" } },
     h("span", {}, s.lastBackup ? lastBackupText(s) + "." : "Your log hasn't been backed up yet."),
-    h("button", { type: "button", class: "small-btn", onclick: () => go("settings") }, "Back up")
+    h("button", { type: "button", class: "small-btn", onclick: () => go("settings") }, T("Back up", "Beam out"))
   );
 }
 
@@ -586,23 +982,31 @@ function SettingsScreen() {
   return [
     h("header", { class: "row", style: { "justify-content": "flex-start", gap: "6px" } },
       h("button", { type: "button", class: "small-btn icon-btn", "aria-label": "Back to logs", onclick: () => { backupUi.restoreArmed = false; go("logs"); } }, svg(ICON.back)),
-      h("h1", { class: "title" }, "Settings")
+      h("h1", { class: "title" }, T("Settings", "Engineering"))
     ),
 
     h("section", { class: "card settings-card" },
-      h("h2", { class: "h2" }, "Backup"),
+      h("h2", { class: "h2" }, T("Appearance", "Holo Deck")),
+      h("p", {}, "Choose how the app looks. Your logs stay the same in every skin."),
+      SkinPicker()
+    ),
+
+    DisplayOptions(),
+
+    h("section", { class: "card settings-card" },
+      h("h2", { class: "h2" }, T("Backup", "Transporter Room")),
       h("p", {}, "A backup is one file with all your logs, recordings, photos, videos and settings. Keep it somewhere safe, like iCloud Drive, Dropbox or a USB drive."),
       h("div", { class: "small", style: { color: s.lastBackup ? "var(--accent2)" : "var(--caution)" } }, lastBackupText(s)),
-      h("button", { type: "button", class: "primary", disabled: busy, onclick: doBackup }, svg(ICON.save), backupUi.busy === "Backing up…" ? "Backing up…" : "Back up now"),
+      h("button", { type: "button", class: "primary", disabled: busy, onclick: doBackup }, svg(ICON.save), backupUi.busy === "Backing up…" ? "Backing up…" : T("Back up now", "Beam out a backup")),
       backupUi.message ? h("div", { class: "notice" }, backupUi.message) : null,
       backupUi.error ? h("div", { class: "notice", style: { "border-color": "var(--critical)", color: "var(--critical)" } }, backupUi.error) : null
     ),
 
     h("section", { class: "card settings-card" },
-      h("h2", { class: "h2" }, "Restore"),
+      h("h2", { class: "h2" }, T("Restore", "Transporter Room: beam in")),
       h("p", {}, "Bring back a log from a backup file, on this device or a new one. This replaces the log that's here now; the current one is kept in a separate folder just in case."),
       h("button", { type: "button", class: "small-btn" + (backupUi.restoreArmed ? " danger" : ""), disabled: busy, onclick: doRestore },
-        svg(ICON.restore), backupUi.busy === "Restoring…" ? "Restoring…" : backupUi.restoreArmed ? "Tap again to choose a backup" : "Restore from a backup")
+        svg(ICON.restore), backupUi.busy === "Restoring…" ? "Restoring…" : backupUi.restoreArmed ? "Tap again to choose a backup" : T("Restore from a backup", "Beam in a backup"))
     ),
 
     canAutoBackup()
@@ -741,7 +1145,7 @@ function RecordingsSection(d) {
   const a = recorder.active;
   return h("div", { class: "stack" },
     h("div", { class: "row" },
-      h("span", { class: "label" }, "Recordings"),
+      h("span", { class: "label" }, T("Recordings", "Communications")),
       a
         ? h("button", { type: "button", class: "small-btn danger", onclick: () => stopRecording() },
             h("span", { class: "rec-dot", "aria-hidden": "true" }),
@@ -1142,7 +1546,7 @@ function MediaSection(d) {
   const long = d.media.find((m) => m.kind === "video" && m.seconds > LONG_VIDEO);
   return h("div", { class: "stack" },
     h("div", { class: "row" },
-      h("span", { class: "label" }, "Photos & video"),
+      h("span", { class: "label" }, T("Photos & video", "Viewscreen")),
       h("label", { class: "small-btn filled" },
         svg(ICON.plus), "Add",
         h("input", {
@@ -1289,7 +1693,7 @@ function ComposeScreen() {
     h("header", { class: "row" },
       h("button", { type: "button", class: "small-btn icon-btn", "aria-label": "Back to logs", onclick: closeCompose }, svg(ICON.back)),
       h("div", { class: "stack", style: { "align-items": "center", gap: "2px" } },
-        h("span", { class: "h2", style: { color: "var(--accent)" } }, isNew ? "New entry" : "Edit entry"),
+        h("span", { class: "h2", style: { color: "var(--accent)" } }, T(isNew ? "New entry" : "Edit entry", "Ready Room")),
         h("span", { class: "small" }, `Log date ${d.stardate.toFixed(1)} · ${formatDate(new Date(d.created))}`)
       ),
       h("button", { type: "button", class: "small-btn filled", onclick: save }, "Save")
@@ -1298,16 +1702,16 @@ function ComposeScreen() {
     h("div", { class: "stack" },
       h("span", { class: "label", id: "type-label" }, "Log type"),
       h("div", { class: "pills", role: "group", "aria-labelledby": "type-label" },
-        LOG_TYPES.map(([k, label]) =>
-          h("button", { type: "button", "aria-pressed": String(d.logType === k), onclick: () => { d.logType = k; render(); } }, label)
+        LOG_TYPES.map(([k]) => [k, typeLabel(k)]).map(([k, label]) =>
+          h("button", { type: "button", title: typePlain(k), "aria-pressed": String(d.logType === k), onclick: () => { d.logType = k; render(); } }, label)
         )
       )
     ),
 
     h("div", { class: "stack" },
-      h("span", { class: "label", id: "cond-label" }, "Condition"),
+      h("span", { class: "label", id: "cond-label" }, T("Condition", "Alert status")),
       h("div", { class: "segment", role: "group", "aria-labelledby": "cond-label" },
-        CONDITIONS.map(([k, label, color]) =>
+        CONDITIONS.map(([k, plain, color, , short]) => [k, T(plain, short), color]).map(([k, label, color]) =>
           h("button", { type: "button", style: { "--c": color }, "aria-pressed": String(d.condition === k), onclick: () => { d.condition = k; render(); } }, label)
         )
       )
@@ -1341,7 +1745,7 @@ function ComposeScreen() {
         type: "button", class: "small-btn", "aria-pressed": String(d.locked),
         style: d.locked ? { color: "var(--accent)", "border-color": "var(--accent)" } : null,
         onclick: () => { d.locked = !d.locked; render(); },
-      }, svg(ICON.lock), d.locked ? "Hidden from search" : "Hide from search"),
+      }, svg(ICON.lock), d.locked ? T("Hidden from search", "Security clearance on") : T("Hide from search", "Set security clearance")),
       isNew ? null : h("button", { type: "button", class: "small-btn danger", onclick: remove },
         state.deleteArmed ? "Tap again to delete" : "Delete")
     ),
@@ -1378,23 +1782,23 @@ function SearchScreen() {
 
   return [
     h("header", { class: "stack" },
-      h("h1", { class: "title" }, "Search logs"),
+      h("h1", { class: "title" }, T("Search logs", "Science Station")),
       h("div", { class: "muted" }, "Titles, entries, crew and places")
     ),
-    SkinSwitcher(),
     h("div", {
       class: "row",
       style: { padding: "0 14px", "border-radius": "var(--radius)", border: "1px solid var(--accent)", background: "var(--panel)", color: "var(--muted)", "justify-content": "flex-start" },
     }, svg(ICON.search), h("label", { for: "q", class: "sr-only" }, "Search logs"), input),
     h("div", { class: "pills scroll", role: "group", "aria-label": "Filter by type" },
-      [["all", "All"], ...LOG_TYPES].map(([k, label]) =>
-        h("button", { type: "button", "aria-pressed": String(state.queryType === k), onclick: () => { state.queryType = k; render(); } }, label)
+      [["all", "All"], ...LOG_TYPES.map(([k]) => [k, typeLabel(k)])].map(([k, label]) =>
+        h("button", { type: "button", title: k === "all" ? "All" : typePlain(k), "aria-pressed": String(state.queryType === k), onclick: () => { state.queryType = k; render(); } }, label)
       )
     ),
-    onThisDay.length
-      ? h("div", { class: "notice row", style: { "justify-content": "flex-start" } }, svg(ICON.clock),
-          `On this date: ${onThisDay.length} ${onThisDay.length === 1 ? "log" : "logs"} from past years`)
-      : null,
+    h("div", { class: "row", style: { "justify-content": "flex-start", "flex-wrap": "wrap" } },
+      h("button", { type: "button", class: "small-btn", onclick: () => go("onthisday") }, svg(ICON.clock),
+        onThisDay.length ? `On this date (${onThisDay.length})` : "On this date"),
+      h("button", { type: "button", class: "small-btn", onclick: () => go("gallery") }, svg(ICON.photo), T("Photos & video", "Viewscreen"))
+    ),
     h("div", { class: "row" }, h("h2", { class: "h2" }, "Results"), countEl),
     results,
   ];
@@ -1415,10 +1819,9 @@ function CrewScreen() {
 
   return [
     h("header", { class: "stack" },
-      h("h1", { class: "title" }, "Crew"),
+      h("h1", { class: "title" }, T("Crew", "Crew Manifest")),
       h("div", { class: "muted" }, "People who appear in your logs")
     ),
-    SkinSwitcher(),
     crew.length
       ? h("div", { class: "list" }, crew.map(([name, n], i) =>
           h("button", { type: "button", class: "person", onclick: () => searchFor(name) },
@@ -1466,10 +1869,9 @@ function MapScreen() {
 
   return [
     h("header", { class: "stack" },
-      h("h1", { class: "title" }, "Map"),
+      h("h1", { class: "title" }, T("Map", "Navigation")),
       h("div", { class: "muted" }, "Where your logs were written")
     ),
-    SkinSwitcher(),
     list.length
       ? [
           h("div", { class: "map" }, chart,

@@ -9,12 +9,21 @@ A starship-style personal journal built with [Tauri 2](https://tauri.app): a Rus
 - **Audio logs**: "Record audio" starts a sound recording right away; the entry screen can record more, play back and delete recordings. Audio is saved as files next to your journal.
 - **Write**: opens a blank entry to type.
 - **Photos & video**: "Add" on the entry screen takes a photo or video with the camera (on phones) or picks from your library or files. Tap one to view or play it full screen, or delete it.
+- **Display options** (Settings): work in every skin.
+  - *Accent color*: recolors buttons, titles and highlights.
+  - *Condition colors*: Off, Subtle (the top bar changes color when your latest log is Caution or Critical) or Full (the whole app turns yellow or red).
+  - *Activity readout*: a graph of your last 7 days on the Logs screen. The ring shows how many of the 7 days have a log, the line shows words written each day, and the bars show logs made each day, with today on the right.
+  - *Card graphics*: a small line drawing on each log for its type.
+  - *Icons instead of words*: buttons and tags show icons and colors only.
+- **Ship terms** (Settings): screens and sections use ship names (Bridge, Ready Room, Science Station, Navigation, Engineering, Holo Deck, Transporter Room, Sick Bay, Yellow Alert and so on). On a computer, hovering over a ship name shows its plain meaning. Turn the setting off for plain labels everywhere.
 - **Text color**: choose the color of your journal text on the entry screen, from preset colors or any color you like. "A" follows the skin.
 - **Entry screen**: log type (Personal, Engineering, Medical, Science, Away mission), condition (Calm / Caution / Critical), title, entry, crew, place, and an option to hide an entry's text from search.
 - **Search**: searches titles, entries, crew and places, with type filters and an "On this date" notice for past years.
+- **Viewscreen**: every photo and video from all your logs in one grid. Open it from Search, or from its tile in the Glass skin.
+- **On this date**: logs written on today's date in past years. Open it from Search, or from its tile in the Glass skin.
 - **Crew**: everyone named in your entries, with how many logs each appears in.
 - **Map**: places from your entries as markers on a stylized chart.
-- **Skins**: Console, Holo and Archive. The choice is remembered.
+- **Skins**: nine looks, chosen in Settings under Appearance: Console, Classic, Vector, Pioneer, Flare, Daylight, Glass, Holo and Archive. Glass has its own home screen, a grid of icon tiles, and its tint follows the Accent color setting (or turn on Clear glass for no tint). The choice is remembered.
 
 Entries are saved by the Rust backend to `entries.json` in the app's data folder, with recordings in an `audio` folder beside it (on a Mac: `~/Library/Application Support/com.dgmcint.shipslog/`).
 
@@ -91,9 +100,12 @@ Putting the app on a real iPhone needs a free Apple ID signed into Xcode; the Ap
 ## Adding a skin
 
 1. In `src/skins.css`, copy one `:root[data-skin="..."]` block, rename it and change the values.
-2. In `src/app.js`, add `["yourname", "Your Name"]` to `SKINS`.
+2. In `src/app.js`, add a line to `SKINS`: the name, a one-line description, and three preview colors.
+3. For shapes that differ from the default (bars, cards, buttons), add rules for `:root[data-skin="yourname"]` in `src/styles.css`.
 
 ## Notes
+
+- On Windows the app is named "Ships Log", without the apostrophe (`src-tauri/tauri.windows.conf.json`). The Windows installer builder fails on an apostrophe in the app name. The window title still reads "Ship's Log".
 
 - Fonts load from Google Fonts. Offline, the app falls back to system fonts. To work fully offline, download the fonts into `src/fonts/` and reference them from `styles.css`.
 - Dictation uses the system's speech recognition inside the app on Mac, iPhone and iPad (the app asks once for speech and microphone access). Where the app's web view has none (Android, Windows, Linux), the Dictate button explains the system's own dictation instead: the keyboard microphone on phones, Windows + H on Windows. Both type straight into the entry.
@@ -115,7 +127,7 @@ Each system gets one file:
 | System | File | How it's used |
 |---|---|---|
 | Mac | `Ship's Log_<version>_universal.dmg` | Open, drag to Applications. Works on Apple Silicon and Intel. |
-| Windows | `Ship's Log_<version>_x64-setup.exe` | Run it. No administrator rights needed. |
+| Windows | `Ships Log_<version>_x64-setup.exe` | Run it. No administrator rights needed. |
 | Linux | `Ship's Log_<version>_amd64.AppImage` | `chmod +x` and run. Nothing to install. |
 
 **Built by GitHub:** `.github/workflows/release.yml` builds all three. Push a version tag and GitHub attaches the files to a draft release:

@@ -73,3 +73,156 @@
   --land: #0f2350;
   --coast: #7fb0ff;
 }
+
+/* ---- Era-inspired skins ---- */
+
+:root[data-skin="classic"] {
+  /* 1960s bridge: square panels, grid lines, primary-colored lights. */
+  --bg: #0a0a0b;
+  --panel: #18181b;
+  --line: #3a3a40;
+  --text: #f3f0e6;
+  --muted: #b5b1a4;
+  --accent: #f2c230;
+  --on-accent: #141005;
+  --accent2: #6fb2f0;
+  --orange: #e8483a;
+  --caution: #f2c230;
+  --critical: #ff6a5c;
+  --radius: 3px;
+  --pip: 3px;
+  --font: "Oxanium", system-ui, sans-serif;
+  --tracking: 0.08em;
+  --case: uppercase;
+  --sea: #0c0c0e;
+  --grid: #222226;
+  --land: #17171a;
+  --coast: #6fb2f0;
+}
+
+:root[data-skin="vector"] {
+  /* Film-era readouts: thin amber and green line drawings on black. */
+  --bg: #050403;
+  --panel: #0e0b07;
+  --line: #6b4a12;
+  --text: #ffe9c7;
+  --muted: #d2ad78;
+  --accent: #ffb000;
+  --on-accent: #140c00;
+  --accent2: #7dd3a8;
+  --orange: #ff6a3d;
+  --caution: #ffd166;
+  --critical: #ff6a3d;
+  --radius: 0px;
+  --pip: 999px;
+  --font: "Share Tech Mono", ui-monospace, monospace;
+  --tracking: 0.08em;
+  --case: uppercase;
+  --sea: #050403;
+  --grid: #2a1d08;
+  --land: rgba(255, 176, 0, 0.05);
+  --coast: #ffb000;
+}
+
+:root[data-skin="pioneer"] {
+  /* Early starship: boxy steel panels with physical push buttons. */
+  --bg: #0d1218;
+  --panel: #1a232e;
+  --line: #44566a;
+  --text: #dfe8f0;
+  --muted: #a3b3c4;
+  --accent: #6fb7e8;
+  --on-accent: #06121c;
+  --accent2: #e8a04a;
+  --orange: #8fa3b8;
+  --caution: #e8c04a;
+  --critical: #f0796a;
+  --radius: 4px;
+  --pip: 4px;
+  --font: "Oxanium", system-ui, sans-serif;
+  --tracking: 0.05em;
+  --case: uppercase;
+  --sea: #0a0f15;
+  --grid: #1c2733;
+  --land: #18222d;
+  --coast: #6fb7e8;
+}
+
+:root[data-skin="flare"] {
+  /* Frosted glass over deep blue, lit with fluorescent cyan, green and pink. */
+  --bg: #071a45;
+  --panel: rgba(255, 255, 255, 0.10);
+  --line: rgba(255, 255, 255, 0.32);
+  --text: #f2fbff;
+  --muted: #bcd6f2;
+  --accent: #19e6ff;
+  --on-accent: #021018;
+  --accent2: #8dff6a;
+  --orange: #ff5ad1;
+  --caution: #fff36a;
+  --critical: #ff7ad9;
+  --radius: 16px;
+  --pip: 999px;
+  --font: "Exo 2", "Oxanium", system-ui, sans-serif;
+  --tracking: 0.04em;
+  --case: uppercase;
+  --sea: rgba(0, 10, 40, 0.45);
+  --grid: rgba(255, 255, 255, 0.12);
+  --land: rgba(25, 230, 255, 0.10);
+  --coast: #19e6ff;
+}
+
+:root[data-skin="daylight"] {
+  /* Bright bridge: white and blue glass. The one light skin. */
+  --bg: #eaf2fb;
+  --panel: rgba(255, 255, 255, 0.72);
+  --line: #b3cbe8;
+  --text: #0b2540;
+  --muted: #47607f;
+  --accent: #0a63cc;
+  --on-accent: #ffffff;
+  --accent2: #0b5c7a;
+  --orange: #c9dcf3;
+  --caution: #8a6200;
+  --critical: #b3261e;
+  --radius: 14px;
+  --pip: 999px;
+  --font: "Exo 2", "Oxanium", system-ui, sans-serif;
+  --tracking: 0.04em;
+  --case: uppercase;
+  --sea: #dbe9f8;
+  --grid: #c3d7ee;
+  --land: #f7fbff;
+  --coast: #0a63cc;
+}
+
+:root[data-skin="glass"] {
+  /* Tinted glass tiles over a warm dark backdrop. The accent color is the tint. */
+  --bg: #120807;
+  --panel: rgba(255, 255, 255, 0.10);
+  --line: rgba(255, 255, 255, 0.22);
+  --text: #ffffff;
+  --muted: #ddd3ce;
+  --accent: #4fa3b8;
+  --on-accent: #04161c;
+  --accent2: #bfeff0;
+  --orange: #e0a48c;
+  --caution: #ffd98a;
+  --critical: #ff9a8a;
+  --radius: 22px;
+  --pip: 999px;
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --tracking: 0;
+  --case: none;
+  --sea: rgba(0, 0, 0, 0.3);
+  --grid: rgba(255, 255, 255, 0.10);
+  --land: rgba(255, 255, 255, 0.08);
+  --coast: #bfeff0;
+  --glass: color-mix(in srgb, var(--accent) 40%, #0b0f14);
+  --glass-ink: color-mix(in srgb, var(--accent) 28%, #ffffff);
+}
+:root[data-skin="glass"][data-clear] {
+  --accent2: #ffffff;
+  --glass: rgba(255, 255, 255, 0.13);
+  --glass-ink: #ffffff;
+}
