@@ -11,8 +11,13 @@
 </head>
 <body>
   <div class="app">
-    <div class="bar" aria-hidden="true">
-      <span class="cap"></span><span id="bar-label" class="bar-label">Ship's Log</span><span class="fill"></span><span class="end"></span>
+    <div class="bar">
+      <span class="cap" aria-hidden="true"></span>
+      <button type="button" id="home-btn" class="home-btn" aria-label="Home">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg>
+        <span id="bar-label" class="bar-label">Ship's Log</span>
+      </button>
+      <span class="fill" aria-hidden="true"></span><span class="end" aria-hidden="true"></span>
     </div>
 
     <main id="screen" class="screen" aria-live="polite"></main>

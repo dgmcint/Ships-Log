@@ -175,10 +175,14 @@ textarea.field { min-height: 220px; resize: vertical; line-height: 1.5; }
 }
 :root[data-skin="holo"] .bar .cap, :root[data-skin="holo"] .bar .fill { background: none; border: 1px solid var(--accent); height: 10px; }
 :root[data-skin="holo"] .bar .end { height: 10px; border-radius: 0; }
-:root[data-skin="archive"] .bar { display: none; }
+/* Archive: a split bar, gold cap and silver end, so it reads differently from Console. */
+:root[data-skin="archive"] .bar .cap { background: var(--accent); width: 44px; }
+:root[data-skin="archive"] .bar .end { background: var(--orange); width: 44px; }
+:root[data-skin="archive"] .bar-label { color: var(--accent2); }
 
 /* ---------- Cover ---------- */
 .cover-screen {
+  overflow: hidden;
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 18px; text-align: center; padding: 12px 0 24px;
 }
@@ -193,13 +197,17 @@ textarea.field { min-height: 220px; resize: vertical; line-height: 1.5; }
 /* Cover title: metallic-blue lettering. */
 .cover-title {
   margin: 0;
-  padding: 0 6px;
+  /* One line, with room at the sides for the slanted letters; app.js shrinks it to fit. */
+  display: inline-block;
+  white-space: nowrap;
+  /* The slanted letters lean past their own width; WebKit cuts off anything outside this box. */
+  padding: 0.08em 0.4em;
   font-family: "Title Face", "Exo 2", var(--font);
   /* Exo 2 uses its real italic; a custom font is shown as designed, never fake-slanted or fake-bolded. */
   font-synthesis: none;
   font-style: italic;
   font-weight: 900;
-  font-size: clamp(40px, 13vw, 64px);
+  font-size: clamp(28px, 11vw, 60px);
   line-height: 1.05;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -216,15 +224,23 @@ textarea.field { min-height: 220px; resize: vertical; line-height: 1.5; }
 .cover-screen .switcher { width: 100%; max-width: 360px; }
 .cover-form { width: 100%; display: flex; flex-direction: column; gap: 10px; text-align: left; }
 
-/* Console skin: the bolder, blockier look */
-:root[data-skin="console"] .primary { border-radius: 999px; }
-:root[data-skin="console"] .card { border: none; border-left: 14px solid var(--accent2); border-radius: 0 var(--radius) var(--radius) 0; }
-:root[data-skin="console"] .switcher { background: none; border: none; padding: 0; }
-:root[data-skin="console"] .switcher button { background: var(--orange); color: var(--on-accent); border-radius: 999px; }
-:root[data-skin="console"] .switcher button[aria-pressed="true"] { background: var(--accent); }
-:root[data-skin="console"] .nav { background: var(--bg); border-top: none; gap: 6px; }
-:root[data-skin="console"] .nav button { background: var(--accent2); color: var(--on-accent); border-radius: 999px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
-:root[data-skin="console"] .nav button[aria-current="page"] { background: var(--accent); color: var(--on-accent); }
+/* Console and Archive skins: the bolder, blockier look */
+:root[data-skin="console"] .primary,
+:root[data-skin="archive"] .primary { border-radius: 999px; }
+:root[data-skin="console"] .card,
+:root[data-skin="archive"] .card { border: none; border-left: 14px solid var(--accent2); border-radius: 0 var(--radius) var(--radius) 0; }
+:root[data-skin="console"] .switcher,
+:root[data-skin="archive"] .switcher { background: none; border: none; padding: 0; }
+:root[data-skin="console"] .switcher button,
+:root[data-skin="archive"] .switcher button { background: var(--orange); color: var(--on-accent); border-radius: 999px; }
+:root[data-skin="console"] .switcher button[aria-pressed="true"],
+:root[data-skin="archive"] .switcher button[aria-pressed="true"] { background: var(--accent); }
+:root[data-skin="console"] .nav,
+:root[data-skin="archive"] .nav { background: var(--bg); border-top: none; gap: 6px; }
+:root[data-skin="console"] .nav button,
+:root[data-skin="archive"] .nav button { background: var(--accent2); color: var(--on-accent); border-radius: 999px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+:root[data-skin="console"] .nav button[aria-current="page"],
+:root[data-skin="archive"] .nav button[aria-current="page"] { background: var(--accent); color: var(--on-accent); }
 
 /* ---------- Recordings ---------- */
 .recording {
@@ -307,3 +323,18 @@ textarea.field { min-height: 220px; resize: vertical; line-height: 1.5; }
 button:disabled { opacity: 0.6; cursor: progress; }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Archive differences: cards edged in gold, nav in steel blue with a gold current tab. */
+:root[data-skin="archive"] .card { border-left-color: var(--accent); }
+:root[data-skin="archive"] .title { color: var(--accent2); }
+
+/* ---------- Home button in the top bar ---------- */
+.home-btn {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px; max-width: 62%;
+  margin: -14px 0; padding: 0 4px; border: none; background: transparent; color: var(--accent);
+}
+.home-btn svg { width: 18px; height: 18px; flex: none; }
+.home-btn .bar-label { max-width: none; color: inherit; }
+.home-btn:disabled { opacity: 1; cursor: default; }
+.home-btn:disabled svg { display: none; }
+:root[data-skin="archive"] .home-btn { color: var(--accent2); }

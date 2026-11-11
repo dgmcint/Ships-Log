@@ -51,24 +51,25 @@
 }
 
 :root[data-skin="archive"] {
-  --bg: #f3ecdc;
-  --panel: #fffaf0;
-  --line: #d9cbb0;
-  --text: #2b2118;
-  --muted: #6b5a48;
-  --accent: #7a3e1d;
-  --on-accent: #fffaf0;
-  --accent2: #2f5d62;
-  --orange: #a5582a;
-  --caution: #8a6200;
-  --critical: #a3261b;
-  --radius: 10px;
+  /* Starship library computer: deep navy with gold, steel blue and silver. */
+  --bg: #050d21;
+  --panel: #0d1c3f;
+  --line: #24407a;
+  --text: #e6eeff;
+  --muted: #9fb4dc;
+  --accent: #e8c46a;
+  --on-accent: #0a1226;
+  --accent2: #7fb0ff;
+  --orange: #c9d3e6;
+  --caution: #f2d45a;
+  --critical: #ff8a7a;
+  --radius: 18px;
   --pip: 999px;
-  --font: "Lora", Georgia, serif;
-  --tracking: 0;
-  --case: none;
-  --sea: #dfe6e0;
-  --grid: #cfd8d1;
-  --land: #f1e6cc;
-  --coast: #8f7a5a;
+  --font: "Antonio", "Oxanium", system-ui, sans-serif;
+  --tracking: 0.06em;
+  --case: uppercase;
+  --sea: #030918;
+  --grid: #12234a;
+  --land: #0f2350;
+  --coast: #7fb0ff;
 }

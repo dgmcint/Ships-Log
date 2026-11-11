@@ -303,17 +303,44 @@ function render() {
   appEl.classList.toggle("cover", state.screen === "cover");
   document.getElementById("bar-label").textContent =
     state.screen === "cover" ? "Personal records" : state.ship.ship || "Ship's Log";
-  document.querySelectorAll(".nav [data-go]").forEach((b) => {
+  // The top-left Home button returns to the cover. It rests on the cover itself,
+  // and while writing an entry (use the back arrow there, so nothing is lost by accident).
+  const home = document.getElementById("home-btn");
+  home.disabled = state.screen === "cover" || state.screen === "compose";
+  home.setAttribute("aria-label", home.disabled ? (state.ship.ship || "Ship's Log") : "Home");
+  /** Shrinks the cover title until the whole line fits inside the screen. */
+function fitCoverTitle() {
+  const el = document.querySelector(".cover-title");
+  if (!el) return;
+  el.style.fontSize = "";
+  const room = el.parentElement.clientWidth - 16;
+  const width = el.getBoundingClientRect().width;
+  if (width > room && width > 0) {
+    const size = parseFloat(getComputedStyle(el).fontSize);
+    el.style.fontSize = Math.max(18, Math.floor(size * room / width)) + "px";
+  }
+}
+window.addEventListener("resize", fitCoverTitle);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitCoverTitle);
+if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", fitCoverTitle);
+
+document.querySelectorAll(".nav [data-go]").forEach((b) => {
     if (b.dataset.go === state.screen) b.setAttribute("aria-current", "page");
     else b.removeAttribute("aria-current");
   });
   const view = { cover: CoverScreen, logs: LogsScreen, compose: ComposeScreen, search: SearchScreen, crew: CrewScreen, map: MapScreen, settings: SettingsScreen }[state.screen];
   screenEl.replaceChildren(...[view()].flat(Infinity).filter(Boolean));
+  fitCoverTitle();
 }
 
 document.querySelectorAll(".nav [data-go]").forEach((b) =>
   b.addEventListener("click", () => go(b.dataset.go))
 );
+document.getElementById("home-btn").addEventListener("click", () => {
+  backupUi.restoreArmed = false;
+  state.editingShip = false;
+  go("cover");
+});
 
 // ---------- Shared pieces ----------
 
@@ -908,7 +935,7 @@ const TEXT_COLORS = [
   ["#9cc4ff", "Sky blue"],
   ["#7fe7c4", "Mint"],
   ["#ffffff", "White"],
-  ["#2b2118", "Ink"],
+  ["#c9d3e6", "Silver"],
   ["#2f5d62", "Teal"],
 ];
 
