@@ -4,8 +4,10 @@
 #   Windows  Ship's Log_<version>_x64-setup.exe   (installs without admin rights)
 #   Linux    Ship's Log_<version>_amd64.AppImage  (runs without installing)
 #
-# To release: update "version" in src-tauri/tauri.conf.json, commit, then
+# To release: update "version" in src-tauri/tauri.conf.json, commit and push, then
+# either press "Run workflow" on the Actions tab (Release workflow), or push a tag:
 #   git tag v0.1.0 && git push origin v0.1.0
+# The release is named after the version in tauri.conf.json.
 # When the three builds finish, review the draft release on GitHub and publish it.
 
 name: Release
@@ -13,6 +15,8 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Adds a "Run workflow" button on the Actions tab.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -60,8 +64,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Ship's Log ${{ github.ref_name }}"
+          tagName: v__VERSION__
+          releaseName: "Ship's Log v__VERSION__"
           releaseBody: |
             **Download the file for your computer:**
             - **Mac** (Apple Silicon and Intel): the `.dmg` file. Open it and drag Ship's Log to Applications.
