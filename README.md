@@ -5,7 +5,11 @@ A starship-style personal journal built with [Tauri 2](https://tauri.app): a Rus
 ## What's in it
 
 - **Logs**: recent entries, a "Begin recording" button and a log date (a stardate-style number).
-- **Audio logs**: "Begin recording" starts recording right away; the entry screen can record more, play back and delete recordings. Audio is saved as files next to your journal.
+- **Dictation**: "Dictate a log" opens a new entry and starts listening; your words appear in the entry as you speak. Say "period", "comma", "question mark", "new line" or "new paragraph" for punctuation. You can type in the entry at any time, during dictation too.
+- **Audio logs**: "Record audio" starts a sound recording right away; the entry screen can record more, play back and delete recordings. Audio is saved as files next to your journal.
+- **Write**: opens a blank entry to type.
+- **Photos & video**: "Add" on the entry screen takes a photo or video with the camera (on phones) or picks from your library or files. Tap one to view or play it full screen, or delete it.
+- **Text color**: choose the color of your journal text on the entry screen, from preset colors or any color you like. "A" follows the skin.
 - **Entry screen**: log type (Personal, Engineering, Medical, Science, Away mission), condition (Calm / Caution / Critical), title, entry, crew, place, and an option to hide an entry's text from search.
 - **Search**: searches titles, entries, crew and places, with type filters and an "On this date" notice for past years.
 - **Crew**: everyone named in your entries, with how many logs each appears in.
@@ -92,6 +96,69 @@ Putting the app on a real iPhone needs a free Apple ID signed into Xcode; the Ap
 ## Notes
 
 - Fonts load from Google Fonts. Offline, the app falls back to system fonts. To work fully offline, download the fonts into `src/fonts/` and reference them from `styles.css`.
-- Dictation (speech to text) uses the microphone on the phone's keyboard. Audio recordings are kept as sound; turning them into text would be a later addition.
+- Dictation uses the system's speech recognition inside the app on Mac, iPhone and iPad (the app asks once for speech and microphone access). Where the app's web view has none (Android, Windows, Linux), the Dictate button explains the system's own dictation instead: the keyboard microphone on phones, Windows + H on Windows. Both type straight into the entry.
+- Audio recordings are kept as sound; turning them into text would be a later addition.
+
+## Backup and restore
+
+Open Settings with the gear button on the Logs screen.
+
+- **Back up now** saves one `.zip` with every log, recording, photo, video and your settings. On a computer you choose where it goes; on a phone it is saved to the app's Documents folder (Files app > Ship's Log > Backups).
+- **Restore from a backup** replaces the log on this device with the one in a backup file. The log it replaces is kept in a `before-restore` folder inside the app's data folder.
+- **Automatic backup** (computers): choose a folder and Daily, Weekly or Monthly. The 10 newest automatic backups are kept.
+- The Logs screen shows a reminder when the last backup is more than two weeks old.
+
+## Install files (Mac, Windows, Linux)
+
+Each system gets one file:
+
+| System | File | How it's used |
+|---|---|---|
+| Mac | `Ship's Log_<version>_universal.dmg` | Open, drag to Applications. Works on Apple Silicon and Intel. |
+| Windows | `Ship's Log_<version>_x64-setup.exe` | Run it. No administrator rights needed. |
+| Linux | `Ship's Log_<version>_amd64.AppImage` | `chmod +x` and run. Nothing to install. |
+
+**Built by GitHub:** `.github/workflows/release.yml` builds all three. Push a version tag and GitHub attaches the files to a draft release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+**Built on your own computer:** `npm run build` makes the file for the system you're on, in `src-tauri/target/release/bundle/`. For the universal Mac file: `rustup target add aarch64-apple-darwin x86_64-apple-darwin`, then `npm run tauri build -- --target universal-apple-darwin`. On Linux the AppImage build also needs `patchelf`.
+
+### What must be in the GitHub repository
+
+```
+.github/workflows/release.yml   (hidden folder: starts with a dot)
+.gitignore
+package.json
+package-lock.json
+README.md
+app-icon.png
+src/                index.html, app.js, styles.css, skins.css, logo.png, fonts/
+src-tauri/
+  Cargo.toml
+  Cargo.lock
+  build.rs
+  tauri.conf.json
+  Info.plist
+  Info.ios.plist
+  Entitlements.plist
+  capabilities/default.json
+  icons/            all of it
+  src/              main.rs, lib.rs, backup.rs
+```
+
+Leave out `node_modules/` and `src-tauri/target/`; they are rebuilt each time.
+
+## Photos and video
+
+- Photos keep their original file. When the original isn't a JPEG, or is larger than 2048 pixels on its longest side, a JPEG copy is made for display, so iPhone HEIC photos still show on Windows, Android and Linux. Every photo and video also gets a small preview image.
+- Videos keep their original file. Phones already record H.264 MP4, which plays everywhere.
+- **On a computer with FFmpeg installed**, any other video (for example WebM, HEVC, or anything larger than 1080p) also gets an H.264 MP4 copy at up to 1080p for playback. Install FFmpeg with `brew install ffmpeg` (Mac), `winget install ffmpeg` (Windows) or your package manager (Linux). Without FFmpeg, videos are kept and played as they are.
+- Videos longer than 5 minutes show how much space they use.
+- Files are saved in pieces, so long videos don't need to fit in memory all at once.
+- Photos and videos are stored in a `media` folder beside `entries.json`.
 - In the browser preview, recordings only last until the page is reloaded.
 - "Hide from search" keeps an entry's text out of search results. It is not encryption yet.

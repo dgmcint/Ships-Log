@@ -4,5 +4,7 @@
 <dict>
   <key>NSMicrophoneUsageDescription</key>
   <string>Ship's Log uses the microphone to record audio log entries.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Ship's Log turns your speech into text when you dictate a log.</string>
 </dict>
 </plist>

@@ -1,0 +1,74 @@
+# Builds one install file per desktop system and attaches them to a draft
+# GitHub release:
+#   macOS    Ship's Log_<version>_universal.dmg   (Apple Silicon and Intel)
+#   Windows  Ship's Log_<version>_x64-setup.exe   (installs without admin rights)
+#   Linux    Ship's Log_<version>_amd64.AppImage  (runs without installing)
+#
+# To release: update "version" in src-tauri/tauri.conf.json, commit, then
+#   git tag v0.1.0 && git push origin v0.1.0
+# When the three builds finish, review the draft release on GitHub and publish it.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target universal-apple-darwin
+          - platform: windows-latest
+            args: ""
+          - platform: ubuntu-22.04
+            args: ""
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build libraries
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # The universal Mac app needs both Apple Silicon and Intel.
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - run: npm install
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Ship's Log ${{ github.ref_name }}"
+          releaseBody: |
+            **Download the file for your computer:**
+            - **Mac** (Apple Silicon and Intel): the `.dmg` file. Open it and drag Ship's Log to Applications.
+            - **Windows**: the `-setup.exe` file. No administrator rights needed.
+            - **Linux**: the `.AppImage` file. Make it executable (`chmod +x`) and run it; nothing to install.
+
+            Until the app is signed, macOS and Windows may warn the first time you open it. On a Mac, right-click the app and choose Open. On Windows, choose More info, then Run anyway.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

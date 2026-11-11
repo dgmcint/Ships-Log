@@ -46,6 +46,8 @@ function matches(e, q, logType) {
 const newestFirst = (list) => [...list].sort((a, b) => b.created.localeCompare(a.created));
 
 const memoryAudio = new Map();
+const memoryMedia = new Map();
+const memoryUrls = new Map();
 
 const browserStore = {
   read() {
@@ -73,8 +75,67 @@ const api = tauri
         return new Blob([buf], { type: rec.mime });
       },
       deleteAudio: (file) => tauri.invoke("delete_audio", { file }),
+
+      // Photos and video go to Rust in 8 MB pieces, so long videos never sit in memory whole.
+      async saveMedia(file, blob, onProgress) {
+        const size = 8 * 1024 * 1024;
+        for (let offset = 0; offset < blob.size || offset === 0; offset += size) {
+          const piece = new Uint8Array(await blob.slice(offset, offset + size).arrayBuffer());
+          await tauri.invoke("save_media_chunk", piece, { headers: { "x-file-name": file, "x-offset": String(offset) } });
+          if (onProgress) onProgress(Math.min(1, (offset + size) / Math.max(blob.size, 1)));
+          if (!blob.size) break;
+        }
+        return file;
+      },
+      deleteMedia: (file) => tauri.invoke("delete_media", { file }),
+      convertVideo: (file) => tauri.invoke("convert_video", { file }),
+      async mediaDir() { return tauri.invoke("media_dir"); },
+      saveSettings: (settings) => tauri.invoke("save_settings", { settings }),
+      backupStatus: () => tauri.invoke("backup_status"),
+      backupNow: () => tauri.invoke("backup_now"),
+      restoreBackup: () => tauri.invoke("restore_backup"),
+      setAutoBackup: (off, everyDays) => tauri.invoke("set_auto_backup", { off, everyDays }),
+      mediaUrl(file) {
+        const dir = state.mediaDir;
+        const sep = dir.includes("\\") ? "\\" : "/";
+        return tauri.convertFileSrc(dir + sep + file);
+      },
     }
   : {
+      // Browser preview only: photos and video live in memory until the page reloads.
+      async saveMedia(file, blob, onProgress) { memoryMedia.set(file, blob); if (onProgress) onProgress(1); return file; },
+      async deleteMedia(file) { memoryMedia.delete(file); },
+      async convertVideo() { return null; },
+      async mediaDir() { return ""; },
+      // Browser preview: backups are a download of the journal text (no media).
+      async saveSettings(s) { try { localStorage.setItem("shipslog.settings", s); } catch {} },
+      async backupStatus() {
+        const last = Number(localStorage.getItem("shipslog.lastBackup") || 0);
+        return { lastBackup: last || null, autoFolder: null, autoEveryDays: 7 };
+      },
+      async backupNow() {
+        const data = JSON.stringify({ entries: browserStore.read(), settings: JSON.parse(localStorage.getItem("shipslog.settings") || "{}") }, null, 2);
+        const a = h("a", { href: URL.createObjectURL(new Blob([data], { type: "application/json" })), download: "ShipsLog-preview-backup.json" });
+        a.click();
+        localStorage.setItem("shipslog.lastBackup", String(Math.floor(Date.now() / 1000)));
+        return { path: "your Downloads folder", bytes: data.length, entries: browserStore.read().length, files: 0 };
+      },
+      async restoreBackup() {
+        const file = await new Promise((resolve) => {
+          const input = h("input", { type: "file", accept: ".json", onchange: () => resolve(input.files[0] || null) });
+          input.click();
+        });
+        if (!file) return null;
+        const data = JSON.parse(await file.text());
+        if (!Array.isArray(data.entries)) throw new Error("That file isn't a Ship's Log preview backup.");
+        browserStore.write(data.entries);
+        return JSON.stringify(data.settings || {});
+      },
+      async setAutoBackup() { return this.backupStatus(); },
+      mediaUrl(file) {
+        if (!memoryUrls.has(file) && memoryMedia.has(file)) memoryUrls.set(file, URL.createObjectURL(memoryMedia.get(file)));
+        return memoryUrls.get(file) || "";
+      },
       // Browser preview only: recordings live in memory until the page reloads.
       async saveAudio(file, blob) { memoryAudio.set(file, blob); return file; },
       async loadAudio(rec) {
@@ -146,6 +207,16 @@ const ICON = {
   stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
   pen: '<path d="M4 20l4-1 11-11-3-3L5 16z"/>',
+  wave: '<path d="M3 12h2M7 8v8M11 5v14M15 8v8M19 11v2"/>',
+  photo: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 8"/>',
+  video: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  save: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/>',
+  restore: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  palette: '<path d="M12 3a9 9 0 1 0 0 18c1.5 0 2-1 2-2s-1-1.5-1-2.5 1-1.5 2-1.5h2a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7" r="1"/>',
 };
 
 const clock = (secs) => {
@@ -177,6 +248,13 @@ const snippet = (e) => {
     const total = recs.reduce((t, r) => t + (r.seconds || 0), 0);
     return `Audio log · ${clock(total)}`;
   }
+  const media = e.media || [];
+  if (!b && media.length) {
+    const photos = media.filter((m) => m.kind === "photo").length;
+    const videos = media.length - photos;
+    return [photos && `${photos} ${photos === 1 ? "photo" : "photos"}`, videos && `${videos} ${videos === 1 ? "video" : "videos"}`]
+      .filter(Boolean).join(" · ");
+  }
   return b.length > 140 ? b.slice(0, 140) + "…" : b;
 };
 
@@ -193,11 +271,14 @@ const state = {
   query: "",
   queryType: "all",
   place: null,
+  mediaDir: "",
+  textColor: "", // "" follows the skin
 };
 
 try {
   const saved = localStorage.getItem("shipslog.skin");
   if (SKINS.some(([k]) => k === saved)) state.skin = saved;
+  state.textColor = localStorage.getItem("shipslog.textColor") || "";
   Object.assign(state.ship, JSON.parse(localStorage.getItem("shipslog.ship") || "{}"));
 } catch {}
 
@@ -216,6 +297,8 @@ async function refresh() {
 
 function render() {
   document.documentElement.dataset.skin = state.skin;
+  if (state.textColor) document.documentElement.style.setProperty("--entry-text", state.textColor);
+  else document.documentElement.style.removeProperty("--entry-text");
   appEl.classList.toggle("composing", state.screen === "compose");
   appEl.classList.toggle("cover", state.screen === "cover");
   document.getElementById("bar-label").textContent =
@@ -224,7 +307,7 @@ function render() {
     if (b.dataset.go === state.screen) b.setAttribute("aria-current", "page");
     else b.removeAttribute("aria-current");
   });
-  const view = { cover: CoverScreen, logs: LogsScreen, compose: ComposeScreen, search: SearchScreen, crew: CrewScreen, map: MapScreen }[state.screen];
+  const view = { cover: CoverScreen, logs: LogsScreen, compose: ComposeScreen, search: SearchScreen, crew: CrewScreen, map: MapScreen, settings: SettingsScreen }[state.screen];
   screenEl.replaceChildren(...[view()].flat(Infinity).filter(Boolean));
 }
 
@@ -243,6 +326,7 @@ function SkinSwitcher() {
         onclick: () => {
           state.skin = k;
           try { localStorage.setItem("shipslog.skin", k); } catch {}
+          persistSettings();
           render();
         },
       }, label)
@@ -262,32 +346,39 @@ function EntryCard(e, q) {
         e.stardate.toFixed(1))
     ),
     h("h3", { class: "h3" }, highlight(e.title || "Untitled", q)),
-    h("p", {}, highlight(snippet(e), q))
+    h("p", {}, highlight(snippet(e), q)),
+    (e.media || []).length ? ThumbStrip(e.media) : null
+  );
+}
+
+/** Up to four small previews on a log card. */
+function ThumbStrip(media) {
+  const shown = media.slice(0, 4);
+  const extra = media.length - shown.length;
+  return h("div", { class: "thumb-strip", "aria-label": `${media.length} photos and videos` },
+    shown.map((m, i) =>
+      h("span", { class: "mini" },
+        m.thumb ? h("img", { src: api.mediaUrl(m.thumb), alt: "" }) : svg(m.kind === "video" ? ICON.video : ICON.photo),
+        m.kind === "video" ? h("span", { class: "mini-play" }, svg(ICON.play)) : null,
+        extra > 0 && i === shown.length - 1 ? h("span", { class: "mini-more" }, "+" + extra) : null
+      )
+    )
   );
 }
 
 // ---------- Screens ----------
 
-/** Original emblem: a planet inside a hexagonal frame, circled by an orbit. */
+/** The app's badge (src/logo.png): replace that file to change it. */
 function Emblem() {
-  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  s.setAttribute("viewBox", "0 0 220 220");
-  s.setAttribute("class", "emblem");
-  s.setAttribute("role", "img");
-  s.setAttribute("aria-label", "Ship's Log emblem");
-  s.innerHTML =
-    '<polygon points="110,12 195,61 195,159 110,208 25,159 25,61" fill="none" stroke="var(--accent)" stroke-width="10" stroke-linejoin="round"/>' +
-    '<polygon points="110,34 176,72 176,148 110,186 44,148 44,72" fill="var(--panel)" stroke="var(--accent2)" stroke-width="3"/>' +
-    '<circle cx="110" cy="110" r="34" fill="var(--accent2)"/>' +
-    '<ellipse cx="110" cy="110" rx="78" ry="26" transform="rotate(-24 110 110)" fill="none" stroke="var(--orange)" stroke-width="6"/>' +
-    '<path d="M86 100 a34 34 0 0 1 48 -14" fill="none" stroke="var(--bg)" stroke-width="4" stroke-linecap="round" opacity=".35"/>' +
-    '<circle cx="176" cy="84" r="8" fill="var(--accent)"/>';
-  return s;
+  return h("img", { src: "logo.png", class: "emblem", alt: "Ship's Log emblem" });
 }
 
 function CoverScreen() {
   const ship = state.ship;
-  const line = [ship.captain && "Capt. " + ship.captain, ship.ship, ship.registry].filter(Boolean).join("  •  ");
+  const parts = [ship.captain && "Capt. " + ship.captain, ship.ship, ship.registry].filter(Boolean);
+  const line = parts.length
+    ? parts.flatMap((p, i) => (i ? [" • ", h("span", {}, p)] : [h("span", {}, p)]))
+    : null;
 
   if (state.editingShip) {
     const draft = { ...ship };
@@ -308,6 +399,7 @@ function CoverScreen() {
         onclick: () => {
           state.ship = { captain: draft.captain.trim(), ship: draft.ship.trim(), registry: draft.registry.trim() };
           try { localStorage.setItem("shipslog.ship", JSON.stringify(state.ship)); } catch {}
+          persistSettings();
           state.editingShip = false;
           render();
         },
@@ -337,22 +429,182 @@ function LogsScreen() {
     h("header", { class: "stack" },
       h("div", { class: "row" },
         h("h1", { class: "title" }, "Ship's Log"),
-        h("span", { class: "chip", style: { "--c": condColor } }, "Condition: " + condLabel)
+        h("button", { type: "button", class: "small-btn icon-btn", "aria-label": "Settings and backup", onclick: () => go("settings") }, svg(ICON.gear))
       ),
-      h("div", { class: "muted" }, `Log date ${stardate(now).toFixed(1)} · ${formatDate(now)}`)
+      h("div", { class: "row" },
+        h("div", { class: "muted" }, `Log date ${stardate(now).toFixed(1)} · ${formatDate(now)}`),
+        h("span", { class: "chip", style: { "--c": condColor } }, "Condition: " + condLabel)
+      )
     ),
     SkinSwitcher(),
-    h("button", { type: "button", class: "primary", onclick: () => openCompose(null, { record: true }) },
-      svg(ICON.mic), "Begin recording"),
-    h("button", { type: "button", class: "small-btn", style: { "align-self": "center" }, onclick: () => openCompose(null) },
-      svg(ICON.pen), "Write an entry"),
+    BackupReminder(),
+    h("button", { type: "button", class: "primary", onclick: () => openCompose(null, { dictate: true }) },
+      svg(ICON.mic), "Dictate a log"),
+    h("div", { class: "row", style: { "justify-content": "center" } },
+      h("button", { type: "button", class: "small-btn", onclick: () => openCompose(null, { record: true }) },
+        svg(ICON.wave), "Record audio"),
+      h("button", { type: "button", class: "small-btn", onclick: () => openCompose(null) },
+        svg(ICON.pen), "Write")
+    ),
     h("div", { class: "row" },
       h("h2", { class: "h2" }, "Recent logs"),
       h("span", { class: "muted" }, `${state.entries.length} on file`)
     ),
     state.entries.length
       ? h("div", { class: "list" }, state.entries.map((e) => EntryCard(e)))
-      : h("div", { class: "empty" }, "No logs on file yet. Tap Begin recording to write your first entry."),
+      : h("div", { class: "empty" }, "No logs on file yet. Tap Dictate a log, or Write, to make your first entry."),
+  ];
+}
+
+// ---------- Settings and backup ----------
+
+const isPhone = () => {
+  const ua = navigator.userAgent;
+  return /iPhone|iPad|iPod|Android/i.test(ua) || (/Mac/i.test(ua) && navigator.maxTouchPoints > 1);
+};
+const canAutoBackup = () => !!tauri && !isPhone();
+
+const backupUi = { status: null, message: "", error: "", busy: "", restoreArmed: false };
+
+function persistSettings() {
+  api.saveSettings(JSON.stringify({ skin: state.skin, ship: state.ship, textColor: state.textColor })).catch(() => {});
+}
+
+function applySettings(json) {
+  let s = {};
+  try { s = JSON.parse(json || "{}"); } catch {}
+  if (SKINS.some(([k]) => k === s.skin)) state.skin = s.skin;
+  if (s.ship) state.ship = { captain: "", ship: "", registry: "", ...s.ship };
+  if (typeof s.textColor === "string") state.textColor = s.textColor;
+  try {
+    localStorage.setItem("shipslog.skin", state.skin);
+    localStorage.setItem("shipslog.ship", JSON.stringify(state.ship));
+    localStorage.setItem("shipslog.textColor", state.textColor);
+  } catch {}
+  persistSettings();
+}
+
+async function loadBackupStatus() {
+  try { backupUi.status = await api.backupStatus(); } catch { backupUi.status = null; }
+}
+
+const daysSince = (secs) => Math.floor((Date.now() / 1000 - secs) / 86400);
+function lastBackupText(status) {
+  if (!status || !status.lastBackup) return "No backup yet";
+  const days = daysSince(status.lastBackup);
+  const when = new Date(status.lastBackup * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  const ago = days <= 0 ? "today" : days === 1 ? "yesterday" : days < 14 ? `${days} days ago` : days < 60 ? `${Math.round(days / 7)} weeks ago` : `${Math.round(days / 30)} months ago`;
+  return `Last backup ${ago} (${when})`;
+}
+
+async function doBackup() {
+  backupUi.busy = "Backing up…"; backupUi.message = ""; backupUi.error = "";
+  render();
+  try {
+    const info = await api.backupNow();
+    if (info) {
+      backupUi.message = `Backup saved: ${info.entries} ${info.entries === 1 ? "log" : "logs"} and ${info.files} ${info.files === 1 ? "file" : "files"}, ${megabytes(info.bytes)}.` +
+        (isPhone() && tauri ? " Find it in the Files app under Ship's Log › Backups." : ` Saved to ${info.path}.`);
+    }
+  } catch (err) {
+    backupUi.error = "Backup didn't finish: " + (err.message || err);
+  }
+  backupUi.busy = "";
+  await loadBackupStatus();
+  render();
+}
+
+async function doRestore() {
+  if (!backupUi.restoreArmed) { backupUi.restoreArmed = true; render(); return; }
+  backupUi.restoreArmed = false;
+  backupUi.busy = "Restoring…"; backupUi.message = ""; backupUi.error = "";
+  render();
+  try {
+    const settings = await api.restoreBackup();
+    if (settings != null) {
+      applySettings(settings);
+      await refresh();
+      backupUi.message = `Restored ${state.entries.length} ${state.entries.length === 1 ? "log" : "logs"}.` +
+        (tauri ? " Your previous log was kept in the app's before-restore folder." : "");
+    }
+  } catch (err) {
+    backupUi.error = "Restore didn't finish: " + (err.message || err) + " Your log hasn't been changed.";
+  }
+  backupUi.busy = "";
+  render();
+}
+
+async function setAuto(off, every) {
+  backupUi.error = "";
+  try { backupUi.status = await api.setAutoBackup(off, every); }
+  catch (err) { backupUi.error = String(err.message || err); }
+  render();
+}
+
+/** A gentle note on the Logs screen when a backup is overdue. */
+function BackupReminder() {
+  const s = backupUi.status;
+  if (!s || !state.entries.length) return null;
+  const overdue = !s.lastBackup || daysSince(s.lastBackup) >= 14;
+  if (!overdue || s.autoFolder) return null;
+  return h("div", { class: "notice row", style: { "justify-content": "space-between" } },
+    h("span", {}, s.lastBackup ? lastBackupText(s) + "." : "Your log hasn't been backed up yet."),
+    h("button", { type: "button", class: "small-btn", onclick: () => go("settings") }, "Back up")
+  );
+}
+
+function SettingsScreen() {
+  const s = backupUi.status || { lastBackup: null, autoFolder: null, autoEveryDays: 7 };
+  const busy = !!backupUi.busy;
+  return [
+    h("header", { class: "row", style: { "justify-content": "flex-start", gap: "6px" } },
+      h("button", { type: "button", class: "small-btn icon-btn", "aria-label": "Back to logs", onclick: () => { backupUi.restoreArmed = false; go("logs"); } }, svg(ICON.back)),
+      h("h1", { class: "title" }, "Settings")
+    ),
+
+    h("section", { class: "card settings-card" },
+      h("h2", { class: "h2" }, "Backup"),
+      h("p", {}, "A backup is one file with all your logs, recordings, photos, videos and settings. Keep it somewhere safe, like iCloud Drive, Dropbox or a USB drive."),
+      h("div", { class: "small", style: { color: s.lastBackup ? "var(--accent2)" : "var(--caution)" } }, lastBackupText(s)),
+      h("button", { type: "button", class: "primary", disabled: busy, onclick: doBackup }, svg(ICON.save), backupUi.busy === "Backing up…" ? "Backing up…" : "Back up now"),
+      backupUi.message ? h("div", { class: "notice" }, backupUi.message) : null,
+      backupUi.error ? h("div", { class: "notice", style: { "border-color": "var(--critical)", color: "var(--critical)" } }, backupUi.error) : null
+    ),
+
+    h("section", { class: "card settings-card" },
+      h("h2", { class: "h2" }, "Restore"),
+      h("p", {}, "Bring back a log from a backup file, on this device or a new one. This replaces the log that's here now; the current one is kept in a separate folder just in case."),
+      h("button", { type: "button", class: "small-btn" + (backupUi.restoreArmed ? " danger" : ""), disabled: busy, onclick: doRestore },
+        svg(ICON.restore), backupUi.busy === "Restoring…" ? "Restoring…" : backupUi.restoreArmed ? "Tap again to choose a backup" : "Restore from a backup")
+    ),
+
+    canAutoBackup()
+      ? h("section", { class: "card settings-card" },
+          h("h2", { class: "h2" }, "Automatic backup"),
+          h("p", {}, s.autoFolder
+            ? `Backups are saved to ${s.autoFolder}. The 10 newest are kept.`
+            : "Save a backup to a folder you choose, on a schedule. Pick a folder that's synced (iCloud Drive, Dropbox, OneDrive) or on another drive."),
+          h("div", { class: "segment", role: "group", "aria-label": "How often" },
+            [[1, "Daily"], [7, "Weekly"], [30, "Monthly"]].map(([days, label]) =>
+              h("button", { type: "button", "aria-pressed": String(s.autoEveryDays === days), onclick: () => setAuto(!s.autoFolder, days) }, label)
+            )
+          ),
+          h("div", { class: "row", style: { "justify-content": "flex-start" } },
+            s.autoFolder
+              ? [
+                  h("button", { type: "button", class: "small-btn", onclick: async () => { await setAuto(true, s.autoEveryDays); setAuto(false, s.autoEveryDays); } }, "Change folder"),
+                  h("button", { type: "button", class: "small-btn danger", onclick: () => setAuto(true, s.autoEveryDays) }, "Turn off"),
+                ]
+              : h("button", { type: "button", class: "small-btn filled", onclick: () => setAuto(false, s.autoEveryDays) }, svg(ICON.folder), "Choose folder and turn on")
+          )
+        )
+      : null,
+
+    h("section", { class: "card settings-card" },
+      h("h2", { class: "h2" }, "Ship's details"),
+      h("p", {}, [state.ship.captain && "Capt. " + state.ship.captain, state.ship.ship, state.ship.registry].filter(Boolean).join(" • ") || "Not set yet."),
+      h("button", { type: "button", class: "small-btn", onclick: () => { state.editingShip = true; go("cover"); } }, "Edit details")
+    ),
   ];
 }
 
@@ -373,6 +625,7 @@ const extFor = (mime) => (mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? 
 
 async function startRecording() {
   if (recorder.active) return;
+  if (dictation.active) stopDictation(); // one thing listens to the microphone at a time
   recorder.error = "";
   if (!navigator.mediaDevices || !window.MediaRecorder) {
     recorder.error = "Audio recording isn't available on this device yet.";
@@ -507,32 +760,452 @@ async function removeRecording(d, rec) {
   render();
 }
 
+// ---------- Dictation (speech to text) ----------
+// Uses the system's speech recognition when the app's web view offers it
+// (Apple devices, and Chrome-based views where available). Elsewhere it points
+// to the system's own dictation, which types into any text box.
+
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const dictation = { rec: null, active: false, interim: "", hint: "" };
+
+function platformDictationHint() {
+  const ua = navigator.userAgent;
+  const touchMac = /Mac/i.test(ua) && navigator.maxTouchPoints > 1; // iPad reports itself as a Mac
+  if (/iPhone|iPad|iPod|Android/i.test(ua) || touchMac) return "Tap the microphone on your keyboard to dictate into the entry.";
+  if (/Mac/i.test(ua)) return "Press the Fn (Globe) key twice to dictate with macOS, and again to stop.";
+  if (/Windows/i.test(ua)) return "Press Windows + H to dictate with Windows voice typing.";
+  return "Dictation isn't available on this system yet. You can record audio instead.";
+}
+
+// Spoken punctuation, for systems that don't add it themselves.
+const SPOKEN = [
+  [/\s*\bnew paragraph\b\s*/gi, "\n\n"],
+  [/\s*\bnew line\b\s*/gi, "\n"],
+  [/\s*\b(period|full stop)\b/gi, "."],
+  [/\s*\bcomma\b/gi, ","],
+  [/\s*\bquestion mark\b/gi, "?"],
+  [/\s*\bexclamation (point|mark)\b/gi, "!"],
+  [/\s*\bcolon\b/gi, ":"],
+];
+
+function appendDictated(d, chunk) {
+  for (const [re, sub] of SPOKEN) chunk = chunk.replace(re, sub);
+  chunk = chunk.replace(/^[ \t]+|[ \t]+$/g, "");
+  if (!chunk) return;
+  chunk = chunk.replace(/([.!?]\s+|\n\s*)([a-z])/g, (m, p, c) => p + c.toUpperCase());
+  const body = d.body;
+  if (!body.trim() || /[.!?\n]\s*$/.test(body)) chunk = chunk[0].toUpperCase() + chunk.slice(1);
+  const sep = !body || /\s$/.test(body) || /^[.,!?:\n]/.test(chunk) ? "" : " ";
+  d.body = body + sep + chunk;
+  const ta = document.getElementById("entry-body");
+  if (ta) { ta.value = d.body; ta.scrollTop = ta.scrollHeight; }
+}
+
+function showInterim() {
+  const el = document.getElementById("dictation-live");
+  if (el) { el.textContent = dictation.interim; el.hidden = !dictation.interim; }
+}
+
+const focusBody = () => { const ta = document.getElementById("entry-body"); if (ta) ta.focus(); };
+
+function startDictation() {
+  if (dictation.active) return;
+  if (recorder.active) stopRecording();
+  dictation.hint = "";
+  if (!SpeechRec) {
+    dictation.hint = platformDictationHint();
+    render();
+    focusBody();
+    return;
+  }
+  const rec = new SpeechRec();
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.lang = navigator.language || "en-US";
+  rec.onresult = (ev) => {
+    let interim = "";
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const r = ev.results[i];
+      if (r.isFinal) appendDictated(state.draft, r[0].transcript);
+      else interim += r[0].transcript;
+    }
+    dictation.interim = interim;
+    showInterim();
+  };
+  rec.onerror = (ev) => {
+    if (ev.error === "no-speech" || ev.error === "aborted") return;
+    dictation.active = false;
+    dictation.hint = (ev.error === "not-allowed" || ev.error === "service-not-allowed")
+      ? "Speech access was turned down. You can allow it in the device's settings. " + platformDictationHint()
+      : platformDictationHint();
+    if (state.screen === "compose") { render(); focusBody(); }
+  };
+  rec.onend = () => {
+    // Some systems stop listening after a pause; carry on until Stop is tapped.
+    if (dictation.active && dictation.rec === rec) {
+      try { rec.start(); return; } catch {}
+    }
+    if (dictation.rec === rec) dictation.rec = null;
+    dictation.active = false;
+    dictation.interim = "";
+    if (state.screen === "compose") render();
+  };
+  dictation.rec = rec;
+  dictation.active = true;
+  dictation.interim = "";
+  try {
+    rec.start();
+  } catch {
+    dictation.active = false;
+    dictation.rec = null;
+    dictation.hint = platformDictationHint();
+  }
+  render();
+}
+
+/** Stops listening; anything still being recognized is finished and added. */
+function stopDictation() {
+  dictation.active = false;
+  if (dictation.rec) { try { dictation.rec.stop(); } catch {} }
+  render();
+}
+
+/** Stops at once, keeping the words heard so far (used when saving or leaving). */
+function finishDictationNow(keep) {
+  if (keep && dictation.interim && state.draft) appendDictated(state.draft, dictation.interim);
+  dictation.active = false;
+  dictation.interim = "";
+  if (dictation.rec) { try { dictation.rec.abort(); } catch {} }
+  dictation.rec = null;
+}
+
+function DictationSection(d) {
+  const set = (ev) => { d.body = ev.target.value; };
+  return h("div", { class: "stack" },
+    h("div", { class: "row" },
+      h("label", { class: "label", for: "entry-body" }, "Entry"),
+      dictation.active
+        ? h("button", { type: "button", class: "small-btn danger", onclick: stopDictation },
+            h("span", { class: "rec-dot", "aria-hidden": "true" }), "Listening", svg(ICON.stop), "Stop")
+        : h("button", { type: "button", class: "small-btn filled", onclick: startDictation }, svg(ICON.mic), "Dictate")
+    ),
+    dictation.hint ? h("div", { class: "notice" }, dictation.hint) : null,
+    h("textarea", { id: "entry-body", class: "field", placeholder: "Personal log, supplemental…", value: d.body, oninput: set }),
+    h("div", { id: "dictation-live", class: "small live", hidden: !dictation.interim }, dictation.interim),
+    dictation.active
+      ? h("div", { class: "small" }, "Say “new paragraph”, “period” or “comma” for punctuation.")
+      : null
+  );
+}
+
+// ---------- Journal text color ----------
+
+const TEXT_COLORS = [
+  ["", "Skin default"],
+  ["#f7b538", "Gold"],
+  ["#ee8a3b", "Orange"],
+  ["#b9acd9", "Lavender"],
+  ["#9cc4ff", "Sky blue"],
+  ["#7fe7c4", "Mint"],
+  ["#ffffff", "White"],
+  ["#2b2118", "Ink"],
+  ["#2f5d62", "Teal"],
+];
+
+function setTextColor(c) {
+  state.textColor = c;
+  try { localStorage.setItem("shipslog.textColor", c); } catch {}
+  persistSettings();
+  render();
+}
+
+function TextColorPicker() {
+  const current = state.textColor;
+  const custom = current && !TEXT_COLORS.some(([c]) => c === current);
+  return h("div", { class: "stack" },
+    h("span", { class: "label", id: "color-label" }, "Text color"),
+    h("div", { class: "swatches", role: "group", "aria-labelledby": "color-label" },
+      TEXT_COLORS.map(([c, name]) =>
+        h("button", {
+          type: "button", class: "swatch" + (c ? "" : " default"), title: name, "aria-label": name,
+          "aria-pressed": String(current === c),
+          style: c ? { "--swatch": c } : null,
+          onclick: () => setTextColor(c),
+        }, c ? null : h("span", { "aria-hidden": "true" }, "A"))
+      ),
+      h("label", { class: "swatch custom" + (custom ? " selected" : ""), title: "Choose any color", style: custom ? { "--swatch": current } : null },
+        h("span", { class: "sr-only" }, "Choose any color"),
+        svg(ICON.palette),
+        h("input", { type: "color", class: "sr-only", value: current || "#f7b538", oninput: (ev) => setTextColor(ev.target.value) })
+      )
+    )
+  );
+}
+
+// ---------- Photos and video ----------
+
+const MAX_PHOTO = 2048;   // longest side of the display copy
+const THUMB = 480;        // longest side of previews
+const LONG_VIDEO = 5 * 60; // seconds; longer clips get a size note
+
+const extOf = (file, fallback) => {
+  const m = /\.([a-z0-9]{1,5})$/i.exec(file.name || "");
+  return (m ? m[1] : fallback).toLowerCase();
+};
+const newBase = () => `m-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+const megabytes = (bytes) => `${Math.max(1, Math.round(bytes / 1048576))} MB`;
+
+/** Draws an image or video frame scaled to fit `max`, as a JPEG blob. */
+function toJpeg(source, w, h, max, quality) {
+  const scale = Math.min(1, max / Math.max(w, h));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(w * scale);
+  canvas.height = Math.round(h * scale);
+  canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height);
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("couldn't make image"))), "image/jpeg", quality)
+  );
+}
+
+async function decodeImage(file) {
+  if (window.createImageBitmap) {
+    try { return await createImageBitmap(file, { imageOrientation: "from-image" }); } catch {}
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    return img;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function processPhoto(d, item, file) {
+  const base = newBase();
+  const original = `${base}.${extOf(file, "jpg")}`;
+  let image = null;
+  try { image = await decodeImage(file); } catch {}
+  const w = image ? image.width || image.naturalWidth : 0;
+  const hgt = image ? image.height || image.naturalHeight : 0;
+
+  await api.saveMedia(original, file, (p) => { item.progress = p; updateTile(item); });
+  d.newMediaFiles.push(original);
+  Object.assign(item, { file: original, mime: file.type || "image/" + extOf(file, "jpg"), bytes: file.size, width: w, height: hgt });
+
+  if (image) {
+    // A JPEG copy for showing: every system can display it, and it's smaller.
+    const needsCopy = file.type !== "image/jpeg" || Math.max(w, hgt) > MAX_PHOTO;
+    if (needsCopy) {
+      const view = `${base}-view.jpg`;
+      await api.saveMedia(view, await toJpeg(image, w, hgt, MAX_PHOTO, 0.86));
+      d.newMediaFiles.push(view);
+      Object.assign(item, { file: view, original, mime: "image/jpeg" });
+    }
+    const thumb = `${base}-thumb.jpg`;
+    await api.saveMedia(thumb, await toJpeg(image, w, hgt, THUMB, 0.8));
+    d.newMediaFiles.push(thumb);
+    item.thumb = thumb;
+  }
+}
+
+/** Reads a video's size, length and a preview frame, using the file itself. */
+function inspectVideo(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = "auto";
+    const done = (info) => { URL.revokeObjectURL(url); resolve(info); };
+    const timer = setTimeout(() => done({}), 8000);
+    v.onloadedmetadata = () => {
+      v.currentTime = Math.min(1, (v.duration || 0) / 2);
+    };
+    v.onseeked = async () => {
+      clearTimeout(timer);
+      const info = { width: v.videoWidth, height: v.videoHeight, seconds: v.duration || 0 };
+      try { info.thumb = await toJpeg(v, v.videoWidth, v.videoHeight, THUMB, 0.8); } catch {}
+      done(info);
+    };
+    v.onerror = () => { clearTimeout(timer); done({}); };
+    v.src = url;
+  });
+}
+
+async function processVideo(d, item, file) {
+  const base = newBase();
+  const original = `${base}.${extOf(file, "mp4")}`;
+  const info = await inspectVideo(file);
+  Object.assign(item, {
+    width: info.width || 0, height: info.height || 0, seconds: info.seconds || 0,
+    bytes: file.size, mime: file.type || "video/mp4",
+  });
+  updateTile(item);
+
+  await api.saveMedia(original, file, (p) => { item.progress = p; updateTile(item); });
+  d.newMediaFiles.push(original);
+  item.file = original;
+
+  if (info.thumb) {
+    const thumb = `${base}-thumb.jpg`;
+    await api.saveMedia(thumb, info.thumb);
+    d.newMediaFiles.push(thumb);
+    item.thumb = thumb;
+  }
+
+  // On computers with FFmpeg, make an H.264 1080p copy if this isn't one already.
+  item.stage = "Preparing";
+  updateTile(item);
+  try {
+    const copy = await api.convertVideo(original);
+    if (copy) {
+      d.newMediaFiles.push(copy);
+      Object.assign(item, { file: copy, original, mime: "video/mp4" });
+    }
+  } catch (err) {
+    console.warn("Video kept as is:", err);
+  }
+}
+
+const mediaState = { error: "", viewing: null };
+
+function addMediaFiles(d, files) {
+  mediaState.error = "";
+  for (const file of files) {
+    const isVideo = (file.type || "").startsWith("video/") || /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(file.name);
+    const item = { kind: isVideo ? "video" : "photo", file: "", pending: true, progress: 0, key: newBase() };
+    d.media.push(item);
+    const job = (isVideo ? processVideo : processPhoto)(d, item, file)
+      .then(() => { delete item.pending; delete item.progress; delete item.stage; })
+      .catch((err) => {
+        d.media = d.media.filter((m) => m !== item);
+        mediaState.error = `Couldn't add ${file.name || "that file"}: ${err.message || err}`;
+      })
+      .finally(() => { if (state.screen === "compose" && state.draft === d) render(); });
+    d.pending.push(job);
+  }
+  render();
+}
+
+/** Updates one tile's progress label without redrawing the screen. */
+function updateTile(item) {
+  const el = document.querySelector(`[data-key="${item.key}"] .tile-status`);
+  if (el) el.textContent = tileStatus(item);
+}
+const tileStatus = (m) =>
+  m.stage ? m.stage + "…" : m.progress != null ? `Saving ${Math.round(m.progress * 100)}%` : "";
+
+async function removeMedia(d, item) {
+  d.media = d.media.filter((m) => m !== item);
+  const files = [item.file, item.original, item.thumb].filter(Boolean);
+  for (const f of files) {
+    if (d.newMediaFiles.includes(f)) {
+      d.newMediaFiles = d.newMediaFiles.filter((x) => x !== f);
+      await api.deleteMedia(f).catch(() => {});
+    } else {
+      d.removedMediaFiles.push(f); // deleted once the entry is saved
+    }
+  }
+  render();
+}
+
+function MediaSection(d) {
+  const long = d.media.find((m) => m.kind === "video" && m.seconds > LONG_VIDEO);
+  return h("div", { class: "stack" },
+    h("div", { class: "row" },
+      h("span", { class: "label" }, "Photos & video"),
+      h("label", { class: "small-btn filled" },
+        svg(ICON.plus), "Add",
+        h("input", {
+          type: "file", class: "sr-only", accept: "image/*,video/*", multiple: true,
+          onchange: (ev) => { addMediaFiles(d, [...ev.target.files]); ev.target.value = ""; },
+        })
+      )
+    ),
+    mediaState.error ? h("div", { class: "notice", style: { "border-color": "var(--critical)", color: "var(--critical)" } }, mediaState.error) : null,
+    long ? h("div", { class: "notice" }, `That video is ${clock(long.seconds)} long and uses ${megabytes(long.bytes)} of space.`) : null,
+    d.media.length
+      ? h("div", { class: "media-grid" }, d.media.map((m) =>
+          h("button", {
+            type: "button", class: "tile", "data-key": m.key || m.file,
+            "aria-label": m.pending ? "Saving" : m.kind === "video" ? `Video, ${clock(m.seconds)}` : "Photo",
+            disabled: !!m.pending,
+            onclick: () => openViewer(d, m),
+          },
+            m.thumb ? h("img", { src: api.mediaUrl(m.thumb), alt: "" }) : h("span", { class: "tile-icon" }, svg(m.kind === "video" ? ICON.video : ICON.photo)),
+            m.kind === "video" && !m.pending ? h("span", { class: "tile-badge" }, svg(ICON.play), clock(m.seconds)) : null,
+            m.pending ? h("span", { class: "tile-status" }, tileStatus(m)) : null
+          )
+        ))
+      : h("div", { class: "small" }, "Take a photo or video, or choose from your library.")
+  );
+}
+
+function openViewer(d, item) {
+  closeViewer();
+  const url = api.mediaUrl(item.file);
+  const media = item.kind === "video"
+    ? h("video", { src: url, controls: true, autoplay: true, playsinline: true })
+    : h("img", { src: url, alt: "" });
+  const overlay = h("div", { class: "viewer", role: "dialog", "aria-modal": "true", "aria-label": item.kind === "video" ? "Video" : "Photo" },
+    h("div", { class: "viewer-bar" },
+      h("button", { type: "button", class: "small-btn", "aria-label": "Close", onclick: closeViewer }, svg(ICON.close)),
+      h("span", { class: "small" }, [item.width && item.height ? `${item.width}×${item.height}` : "", item.bytes ? megabytes(item.bytes) : ""].filter(Boolean).join(" · ")),
+      d ? h("button", { type: "button", class: "small-btn danger", "aria-label": "Delete", onclick: () => { closeViewer(); removeMedia(d, item); } }, svg(ICON.trash)) : h("span")
+    ),
+    h("div", { class: "viewer-body" }, media)
+  );
+  mediaState.viewing = overlay;
+  document.body.append(overlay);
+  overlay.querySelector("button").focus();
+}
+
+function closeViewer() {
+  const v = mediaState.viewing;
+  if (!v) return;
+  const video = v.querySelector("video");
+  if (video) video.pause();
+  v.remove();
+  mediaState.viewing = null;
+}
+
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeViewer(); });
+
 // ---------- Entry screen ----------
 
 function openCompose(entry, opts = {}) {
   const now = new Date();
   state.draft = entry
-    ? { ...entry, crewText: (entry.crew || []).join(", "), recordings: [...(entry.recordings || [])] }
+    ? { ...entry, crewText: (entry.crew || []).join(", "), recordings: [...(entry.recordings || [])], media: (entry.media || []).map((m) => ({ ...m })) }
     : {
         id: "", created: now.toISOString(), stardate: stardate(now),
         logType: "personal", condition: "calm", title: "", body: "",
-        crewText: "", place: "", locked: false, recordings: [],
+        crewText: "", place: "", locked: false, recordings: [], media: [],
       };
-  state.draft.newFiles = [];
-  state.draft.removedFiles = [];
+  Object.assign(state.draft, { newFiles: [], removedFiles: [], newMediaFiles: [], removedMediaFiles: [], pending: [] });
   state.deleteArmed = false;
   recorder.error = "";
+  mediaState.error = "";
+  dictation.hint = "";
   go("compose");
   if (opts.record) startRecording();
+  if (opts.dictate) startDictation();
 }
 
 /** Leaves the entry screen without saving: drops any recordings made since it opened. */
 async function closeCompose() {
   const d = state.draft;
+  finishDictationNow(false);
   await stopRecording(true);
   stopPlayback();
-  for (const f of d.newFiles) await api.deleteAudio(f).catch(() => {});
+  closeViewer();
   go("logs");
+  // Tidy up anything added since the entry was opened, once uploads settle.
+  await Promise.allSettled(d.pending);
+  for (const f of d.newFiles) await api.deleteAudio(f).catch(() => {});
+  for (const f of d.newMediaFiles) await api.deleteMedia(f).catch(() => {});
 }
 
 function ComposeScreen() {
@@ -540,10 +1213,18 @@ function ComposeScreen() {
   const isNew = !d.id;
   const set = (k) => (ev) => { d[k] = ev.target.value; };
 
-  async function save() {
+  async function save(ev) {
+    finishDictationNow(true);
     await stopRecording();
     stopPlayback();
-    if (!d.title.trim() && !d.body.trim() && !d.recordings.length) {
+    closeViewer();
+    if (d.media.some((m) => m.pending)) {
+      const btn = ev && ev.currentTarget;
+      if (btn) { btn.textContent = "Saving…"; btn.disabled = true; }
+      await Promise.allSettled(d.pending);
+    }
+    if (!d.title.trim() && !d.body.trim() && !d.recordings.length && !d.media.length) {
+      render();
       document.getElementById("entry-body").focus();
       return;
     }
@@ -554,18 +1235,24 @@ function ComposeScreen() {
       crew: d.crewText.split(",").map((s) => s.trim()).filter(Boolean),
       place: d.place.trim(), locked: d.locked,
       recordings: d.recordings,
+      media: d.media.filter((m) => m.file && !m.pending).map(({ kind, file, original, thumb, mime, width, height, seconds, bytes }) =>
+        ({ kind, file, original, thumb, mime, width: width || 0, height: height || 0, seconds: seconds || 0, bytes: bytes || 0 })),
     };
     await api.save(entry);
     for (const f of d.removedFiles) await api.deleteAudio(f).catch(() => {});
+    for (const f of d.removedMediaFiles) await api.deleteMedia(f).catch(() => {});
     await refresh();
     go("logs");
   }
 
   async function remove() {
     if (!state.deleteArmed) { state.deleteArmed = true; render(); return; }
+    finishDictationNow(false);
     await stopRecording(true);
     stopPlayback();
+    await Promise.allSettled(d.pending);
     for (const f of d.newFiles) await api.deleteAudio(f).catch(() => {});
+    for (const f of d.newMediaFiles) await api.deleteMedia(f).catch(() => {});
     await api.remove(d.id);
     await refresh();
     go("logs");
@@ -599,27 +1286,18 @@ function ComposeScreen() {
       )
     ),
 
-    RecordingsSection(d),
-
     h("div", { class: "stack" },
       h("label", { class: "label", for: "entry-title" }, "Title"),
       h("input", { id: "entry-title", class: "field title-field", type: "text", placeholder: "What happened today?", value: d.title, oninput: set("title") })
     ),
 
-    h("div", { class: "stack" },
-      h("div", { class: "row" },
-        h("label", { class: "label", for: "entry-body" }, "Entry"),
-        h("button", {
-          type: "button", class: "small-btn",
-          onclick: () => {
-            document.getElementById("entry-body").focus();
-            document.getElementById("dictate-tip").hidden = false;
-          },
-        }, svg(ICON.mic), "Dictate")
-      ),
-      h("div", { id: "dictate-tip", class: "notice", hidden: true }, "Tap the microphone on your keyboard to dictate."),
-      h("textarea", { id: "entry-body", class: "field", placeholder: "Personal log, supplemental…", value: d.body, oninput: set("body") })
-    ),
+    DictationSection(d),
+
+    TextColorPicker(),
+
+    MediaSection(d),
+
+    RecordingsSection(d),
 
     h("div", { class: "stack" },
       h("label", { class: "label", for: "entry-crew" }, "Crew"),
@@ -796,6 +1474,11 @@ function MapScreen() {
 
 (async () => {
   render();
-  try { await refresh(); } catch (err) { console.error(err); }
+  try {
+    state.mediaDir = await api.mediaDir();
+    persistSettings();
+    await refresh();
+    await loadBackupStatus();
+  } catch (err) { console.error(err); }
   render();
 })();

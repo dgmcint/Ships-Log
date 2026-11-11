@@ -19,12 +19,22 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPDATA/media/**"
+        ]
+      }
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "dmg",
+      "nsis",
+      "appimage"
+    ],
     "macOS": {
       "entitlements": "./Entitlements.plist"
     },
@@ -34,6 +44,20 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "category": "Lifestyle",
+    "shortDescription": "A starship-style personal journal",
+    "longDescription": "Ship's Log is a personal journal with dictation, audio logs, photos and video, switchable skins and one-file backups.",
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false
+      }
+    },
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    }
   }
 }
