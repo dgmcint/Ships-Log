@@ -226,3 +226,20 @@
   --glass: rgba(255, 255, 255, 0.13);
   --glass-ink: #ffffff;
 }
+
+/* Grid: neon grid worlds. The backdrop (Sunset, Room, Rings, Light-line) is chosen in Settings. */
+:root[data-skin="grid"] {
+  --bg: #0a0420; --panel: rgba(12, 6, 44, 0.78); --line: rgba(25, 230, 255, 0.55); --text: #f4f7ff; --muted: #c0c9f2;
+  --accent: #19e6ff; --on-accent: #02131a; --accent2: #ff5fdc; --orange: #ffb03d; --caution: #ffe45c; --critical: #ff6b86;
+  --radius: 6px; --pip: 6px; --font: "Oxanium", system-ui, sans-serif; --tracking: 0.06em; --case: uppercase;
+  --sea: rgba(5, 2, 24, 0.7); --grid: rgba(25, 230, 255, 0.18); --land: rgba(255, 95, 220, 0.10); --coast: #19e6ff;
+  --floor-line: #19e6ff; --sky-top: #14063a; --sky-mid: #4a1470; --sky-low: #c2327e;
+}
+:root[data-skin="grid"][data-variant="room"] { --accent2: #7df9ff; --sky-top: #05080c; --sky-mid: #05080c; --sky-low: #05080c; --panel: rgba(4, 10, 14, 0.82); }
+:root[data-skin="grid"][data-variant="rings"] { --accent2: #5b8cff; --sky-top: #041428; --sky-mid: #062035; --sky-low: #0a3a4a; --panel: rgba(4, 18, 34, 0.80); }
+
+:root[data-skin="grid"][data-variant="lightline"] {
+  --accent: #6ff6ff; --on-accent: #001418; --accent2: #ff9a1f; --floor-line: #38e8ff;
+  --sky-top: #000307; --sky-mid: #00070d; --sky-low: #001a22; --panel: rgba(0, 6, 10, 0.86);
+  --font: "Oxanium", system-ui, sans-serif;
+}

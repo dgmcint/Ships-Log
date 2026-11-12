@@ -23,7 +23,7 @@ A starship-style personal journal built with [Tauri 2](https://tauri.app): a Rus
 - **On this date**: logs written on today's date in past years. Open it from Search, or from its tile in the Glass skin.
 - **Crew**: everyone named in your entries, with how many logs each appears in.
 - **Map**: places from your entries as markers on a stylized chart.
-- **Skins**: nine looks, chosen in Settings under Appearance: Console, Classic, Vector, Pioneer, Flare, Daylight, Glass, Holo and Archive. Glass has its own home screen, a grid of icon tiles, and its tint follows the Accent color setting (or turn on Clear glass for no tint). The choice is remembered.
+- **Skins**: ten looks, chosen in Settings under Appearance: Console, Classic, Vector, Pioneer, Flare, Daylight, Glass, Grid, Holo and Archive. Grid has four backdrops to choose from: Sunset, Room, Rings and Light-line. Glass has its own home screen, a grid of icon tiles, and its tint follows the Accent color setting (or turn on Clear glass for no tint). The choice is remembered.
 
 Entries are saved by the Rust backend to `entries.json` in the app's data folder, with recordings in an `audio` folder beside it (on a Mac: `~/Library/Application Support/com.dgmcint.shipslog/`).
 

@@ -12,6 +12,7 @@ const SKINS = [
   ["flare", "Flare", "Frosted glass lit with fluorescent cyan, green and pink", ["#0b2152", "#19e6ff", "#ff5ad1"]],
   ["daylight", "Daylight", "Bright bridge: white and blue with a light streak", ["#eaf2fb", "#0a63cc", "#0b5c7a"]],
   ["glass", "Glass", "Tinted glass tiles on a warm dark backdrop, with a tile home screen", ["#2a0f08", "#4fa3b8", "#bfeff0"]],
+  ["grid", "Grid", "Neon grid worlds: Sunset, Room, Rings or Light-line", ["#0a0420", "#19e6ff", "#ff4fd8"]],
   ["holo", "Holo", "Modern projection: glowing cyan outlines", ["#04121c", "#2fd3e8", "#7fe7c4"]],
   ["archive", "Archive", "Library computer: navy with gold, steel blue and silver", ["#050d21", "#e8c46a", "#7fb0ff"]],
 ];
@@ -328,6 +329,7 @@ const state = {
     glyphs: true,      // line graphics on log cards
     iconsOnly: false,  // icons in place of words on buttons
     glassClear: false, // Glass skin: clear tiles with no tint
+    gridBackdrop: "sunset", // Grid skin: "sunset" | "room" | "rings" | "lightline"
     shipTerms: true,   // ship names (Bridge, Engineering…) in place of plain labels
   },
 };
@@ -370,6 +372,7 @@ function applyLook() {
   root.dataset.alertMode = p.alertMode;
   if (p.iconsOnly) root.dataset.icons = "on"; else delete root.dataset.icons;
   if (p.glassClear && state.skin === "glass") root.dataset.clear = "on"; else delete root.dataset.clear;
+  if (state.skin === "grid") root.dataset.variant = p.gridBackdrop || "sunset"; else delete root.dataset.variant;
   // A full Caution or Critical recolor takes over from the chosen accent color.
   const alertWins = p.alertMode === "full" && alert !== "calm";
   if (/^#[0-9a-f]{6}$/i.test(p.accent) && !alertWins) {
@@ -453,6 +456,28 @@ function setSkin(k) {
 }
 
 /** The list of skins on the Settings screen. */
+const GRID_BACKDROPS = [
+  ["sunset", "Sunset", "A striped sun behind wireframe mountains"],
+  ["room", "Room", "A black grid room, floor and ceiling"],
+  ["rings", "Rings", "Turning rings over a teal floor"],
+  ["lightline", "Light-line", "Glowing circuit lines on black, with orange"],
+];
+
+/** Shown under the skin list while Grid is in use. */
+function GridBackdropPicker() {
+  const current = state.prefs.gridBackdrop || "sunset";
+  const about = (GRID_BACKDROPS.find(([k]) => k === current) || GRID_BACKDROPS[0])[2];
+  return h("div", { class: "stack" },
+    h("span", { class: "label", id: "backdrop-label" }, "Grid backdrop"),
+    h("div", { class: "pills", role: "group", "aria-labelledby": "backdrop-label" },
+      GRID_BACKDROPS.map(([k, name]) =>
+        h("button", { type: "button", "aria-pressed": String(current === k), onclick: () => setPref("gridBackdrop", k) }, name)
+      )
+    ),
+    h("span", { class: "small" }, about)
+  );
+}
+
 function SkinPicker() {
   return h("div", { class: "skin-list", role: "group", "aria-label": "Skin" },
     SKINS.map(([k, name, about, colors]) =>
@@ -988,7 +1013,8 @@ function SettingsScreen() {
     h("section", { class: "card settings-card" },
       h("h2", { class: "h2" }, T("Appearance", "Holo Deck")),
       h("p", {}, "Choose how the app looks. Your logs stay the same in every skin."),
-      SkinPicker()
+      SkinPicker(),
+      state.skin === "grid" ? GridBackdropPicker() : null
     ),
 
     DisplayOptions(),

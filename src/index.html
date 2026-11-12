@@ -11,6 +11,27 @@
 </head>
 <body>
   <div class="app">
+    <div class="scene" aria-hidden="true">
+      <div class="sky"></div>
+      <div class="sun"></div>
+      <svg class="rings" viewBox="-240 -240 480 240"><circle r="30" stroke-dasharray="3 5" class="rg0" style="animation-duration:40s;animation-direction:normal"/><circle r="52" stroke-dasharray="10 6" class="rg1" style="animation-duration:49s;animation-direction:reverse"/><circle r="76" stroke-dasharray="2 6" class="rg2" style="animation-duration:58s;animation-direction:normal"/><circle r="102" stroke-dasharray="16 8" class="rg0" style="animation-duration:67s;animation-direction:reverse"/><circle r="130" stroke-dasharray="4 7" class="rg1" style="animation-duration:76s;animation-direction:normal"/><circle r="160" stroke-dasharray="22 10" class="rg2" style="animation-duration:85s;animation-direction:reverse"/><circle r="192" stroke-dasharray="3 8" class="rg0" style="animation-duration:94s;animation-direction:normal"/><circle r="226" stroke-dasharray="14 9" class="rg1" style="animation-duration:103s;animation-direction:reverse"/></svg>
+      <svg class="peaks" viewBox="0 0 390 120" preserveAspectRatio="none">
+        <path d="M0 120 L0 70 L18 40 L30 62 L48 22 L62 58 L80 44 L96 74 L112 60 L128 88 L146 80 L160 104 L176 120 Z"/>
+        <path d="M0 70 L30 62 L62 58 L96 74 L128 88 L160 104 M18 40 L48 22 M48 22 L80 44 L112 60 L146 80 M30 62 L48 22 M62 58 L80 44 M96 74 L112 60 M18 40 L62 58 M48 22 L96 74 M80 44 L128 88" class="w"/>
+        <path d="M390 120 L390 64 L372 36 L358 60 L340 28 L326 56 L308 48 L292 78 L276 66 L260 92 L244 84 L228 108 L214 120 Z"/>
+        <path d="M390 64 L358 60 L326 56 L292 78 L260 92 L228 108 M372 36 L340 28 M340 28 L308 48 L276 66 L244 84 M358 60 L340 28 M326 56 L308 48 M292 78 L276 66 M372 36 L326 56 M340 28 L292 78 M308 48 L260 92" class="w"/>
+      </svg>
+      <svg class="traces" viewBox="0 0 390 520" preserveAspectRatio="none">
+        <path d="M0 120 H60 L90 150 V300 L120 330 H150"/><path d="M0 220 H30 L50 240 V420"/>
+        <path d="M390 90 H320 L290 120 V260 L260 290 H230" class="o"/><path d="M390 330 H350 L330 350 V470"/>
+        <path d="M150 330 V520 M230 290 V520" />
+        <circle cx="150" cy="330" r="4"/><circle cx="230" cy="290" r="4" class="o"/><circle cx="50" cy="420" r="3"/><circle cx="330" cy="470" r="3"/>
+      </svg>
+      <div class="ceiling"></div>
+      <div class="floor"></div>
+      <div class="horizon"></div>
+    </div>
+
     <div class="bar">
       <span class="cap" aria-hidden="true"></span>
       <button type="button" id="home-btn" class="home-btn" aria-label="Home">

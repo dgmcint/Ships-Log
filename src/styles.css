@@ -688,3 +688,90 @@ button:disabled { opacity: 0.6; cursor: progress; }
 :root[data-skin="glass"] .ro-bars rect:not(.empty) { fill: var(--glass-ink); }
 :root[data-skin="glass"] .ro-path, :root[data-skin="glass"] .ro-ring { stroke: #ffffff; }
 :root[data-skin="glass"] .ro-dot { fill: #ffffff; }
+/* ---------- Grid: neon grid worlds with four backdrops ---------- */
+.scene { display: none; }
+:root[data-skin="grid"] .app { position: relative; overflow: hidden; background: var(--sky-top); }
+:root[data-skin="grid"] .app > *:not(.scene) { position: relative; z-index: 1; }
+:root[data-skin="grid"] .scene { display: block; position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.scene .sky { position: absolute; inset: 0 0 46% 0; background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 60%, var(--sky-low) 100%); }
+.scene .sun { position: absolute; left: 50%; top: calc(54% - 105px); width: 210px; height: 210px; margin-left: -105px; border-radius: 50%;
+  background: linear-gradient(180deg, #fff06a 0%, #ffb23d 30%, #ff5f9e 50%); clip-path: inset(0 0 50% 0);
+  -webkit-mask-image: linear-gradient(#000 0 30%, transparent 30% 32%, #000 32% 37%, transparent 37% 40%, #000 40% 44%, transparent 44% 47%, #000 47% 50%); mask-image: linear-gradient(#000 0 30%, transparent 30% 32%, #000 32% 37%, transparent 37% 40%, #000 40% 44%, transparent 44% 47%, #000 47% 50%);
+  filter: drop-shadow(0 0 30px rgba(255, 150, 80, .7)); }
+.scene .peaks { position: absolute; left: 0; right: 0; top: calc(54% - 120px); width: 100%; height: 120px; fill: #0a0a2e; stroke: var(--floor-line); stroke-width: 1.2; filter: drop-shadow(0 0 4px var(--floor-line)); }
+.scene .peaks .w { fill: none; opacity: .7; }
+.scene .floor, .scene .ceiling { position: absolute; left: -60%; right: -60%; height: 60%;
+  background-color: #070320;
+  background-image: linear-gradient(var(--floor-line) 2px, transparent 2px), linear-gradient(90deg, var(--floor-line) 2px, transparent 2px);
+  background-size: 56px 56px; animation: floor-run 1.8s linear infinite; }
+.scene .floor { top: 54%; transform: perspective(300px) rotateX(64deg); transform-origin: top center; }
+.scene .ceiling { display: none; bottom: 46%; transform: perspective(300px) rotateX(-64deg); transform-origin: bottom center; animation-direction: reverse; }
+@keyframes floor-run { to { background-position: 0 56px, 0 0; } }
+.scene .horizon { position: absolute; left: 0; right: 0; top: 54%; height: 3px; margin-top: -1px; background: #fff; box-shadow: 0 0 18px 6px var(--accent2), 0 0 60px 20px color-mix(in srgb, var(--accent2) 50%, transparent); }
+.scene .rings { display: none; position: absolute; left: 50%; top: calc(54% - 300px); width: 600px; height: 300px; margin-left: -300px; fill: none; stroke-width: 5; }
+.scene .rings circle { transform-box: fill-box; transform-origin: center; animation: ring-turn linear infinite; }
+.rg0 { stroke: #19e6ff; } .rg1 { stroke: #3d7dff; } .rg2 { stroke: #2fd3b0; }
+/* variants */
+:root[data-variant="room"] .scene .sun, :root[data-variant="room"] .scene .peaks, :root[data-variant="rings"] .scene .sun, :root[data-variant="rings"] .scene .peaks { display: none; }
+:root[data-variant="room"] .scene .ceiling { display: block; }
+:root[data-variant="room"] .scene .floor, :root[data-variant="room"] .scene .ceiling { background-color: #05080c; background-image: linear-gradient(var(--floor-line) 1.5px, transparent 1.5px), linear-gradient(90deg, var(--floor-line) 1.5px, transparent 1.5px); }
+:root[data-variant="room"] .scene .horizon { background: var(--floor-line); box-shadow: 0 0 10px 2px var(--floor-line); }
+:root[data-variant="rings"] .scene .rings { display: block; }
+:root[data-variant="rings"] .scene .floor { background-color: #04414a; background-image: linear-gradient(#7df9ff 1.5px, transparent 1.5px), linear-gradient(90deg, #7df9ff 1.5px, transparent 1.5px); }
+:root[data-variant="rings"] .scene .horizon { background: #7df9ff; box-shadow: 0 0 18px 6px #19e6ff; }
+/* panels */
+:root[data-skin="grid"] .bar .cap, :root[data-skin="grid"] .bar .end { height: 4px; width: 20px; border-radius: 0; background: var(--accent2); box-shadow: 0 0 8px var(--accent2); }
+:root[data-skin="grid"] .bar .fill { height: 2px; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+:root[data-skin="grid"] .card, :root[data-skin="grid"] .field, :root[data-skin="grid"] .small-btn:not(.filled), :root[data-skin="grid"] .pills button:not([aria-pressed="true"]), :root[data-skin="grid"] .segment button, :root[data-skin="grid"] .skin-option {
+  background: var(--panel); border: 1px solid var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent), inset 0 0 18px color-mix(in srgb, var(--accent) 8%, transparent);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+:root[data-skin="grid"] .primary, :root[data-skin="grid"] .small-btn.filled { box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 70%, transparent); }
+:root[data-skin="grid"] .title { text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 80%, transparent); font-style: italic; }
+:root[data-skin="grid"] .h2 { color: var(--accent2); text-shadow: 0 0 10px color-mix(in srgb, var(--accent2) 70%, transparent); }
+:root[data-skin="grid"] .nav { background: rgba(6, 3, 28, 0.86); border-top: 2px solid var(--accent2); box-shadow: 0 -4px 18px color-mix(in srgb, var(--accent2) 50%, transparent); }
+:root[data-skin="grid"] .nav button[aria-current="page"] { color: var(--accent2); text-shadow: 0 0 10px var(--accent2); }
+:root[data-skin="grid"] .emblem { filter: drop-shadow(0 0 24px color-mix(in srgb, var(--accent2) 60%, transparent)); }
+:root[data-skin="grid"] .screen > .row > .muted, :root[data-skin="grid"] header .muted { text-shadow: 0 1px 4px #000; }
+
+/* readability over the scene */
+:root[data-skin="grid"] .cover-sub, :root[data-skin="grid"] .cover-line, :root[data-skin="grid"] .muted, :root[data-skin="grid"] .h2, :root[data-skin="grid"] .readout-caption { text-shadow: 0 0 4px #000, 0 0 10px #000, 0 1px 2px #000; }
+:root[data-skin="grid"] .scene::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 50%, rgba(0,0,0,.35) 56%, rgba(0,0,0,.15) 100%); }
+
+/* Light-line backdrop */
+:root[data-variant="lightline"] .scene .sun, :root[data-variant="lightline"] .scene .peaks, :root[data-variant="lightline"] .scene .rings { display: none; }
+:root[data-variant="lightline"] .scene .floor { top: 62%; background-color: #000508;
+  background-image: linear-gradient(var(--floor-line) 1px, transparent 1px), linear-gradient(90deg, var(--floor-line) 1px, transparent 1px);
+  filter: drop-shadow(0 0 3px var(--floor-line)); animation-duration: 3s; }
+:root[data-variant="lightline"] .scene .horizon { top: 62%; height: 1px; background: var(--floor-line); box-shadow: 0 0 14px 3px var(--floor-line); }
+:root[data-variant="lightline"] .scene .sky { inset: 0 0 38% 0; background:
+  linear-gradient(90deg, transparent calc(50% - 1px), rgba(111,246,255,.55) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)),
+  radial-gradient(60% 30% at 50% 100%, rgba(56,232,255,.18), transparent 70%), #000307; }
+.scene .traces { display: none; }
+:root[data-variant="lightline"] .scene .traces { display: block; position: absolute; left: 0; right: 0; top: 0; height: 62%; width: 100%; fill: none; stroke: var(--floor-line); stroke-width: 1.5; filter: drop-shadow(0 0 4px var(--floor-line)); opacity: .55; }
+:root[data-variant="lightline"] .scene .traces .o { stroke: var(--accent2); filter: drop-shadow(0 0 4px var(--accent2)); }
+:root[data-variant="lightline"] .scene .traces circle { fill: #000; }
+:root[data-skin="grid"][data-variant="lightline"] .card,
+:root[data-skin="grid"][data-variant="lightline"] .field,
+:root[data-skin="grid"][data-variant="lightline"] .small-btn:not(.filled),
+:root[data-skin="grid"][data-variant="lightline"] .segment button,
+:root[data-skin="grid"][data-variant="lightline"] .pills button:not([aria-pressed="true"]) {
+  border-radius: 0; border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.9), inset 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent), 0 0 10px color-mix(in srgb, var(--accent) 35%, transparent);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+}
+:root[data-skin="grid"][data-variant="lightline"] .card { border-left: 3px solid var(--accent); }
+:root[data-skin="grid"][data-variant="lightline"] .primary { border-radius: 0; background: transparent; color: var(--accent); border: 2px solid var(--accent);
+  clip-path: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+  box-shadow: inset 0 0 18px color-mix(in srgb, var(--accent) 45%, transparent); text-shadow: 0 0 10px var(--accent); }
+:root[data-skin="grid"][data-variant="lightline"] .nav { border-top: 1px solid var(--accent); box-shadow: 0 -2px 14px color-mix(in srgb, var(--accent) 50%, transparent); background: rgba(0,4,7,.92); }
+:root[data-skin="grid"][data-variant="lightline"] .nav button[aria-current="page"] { color: var(--accent2); text-shadow: 0 0 10px var(--accent2); }
+:root[data-skin="grid"][data-variant="lightline"] .h2 { color: var(--accent2); text-shadow: 0 0 10px color-mix(in srgb, var(--accent2) 70%, transparent), 0 0 4px #000; }
+:root[data-skin="grid"][data-variant="lightline"] .title { font-style: normal; letter-spacing: .14em; }
+:root[data-skin="grid"][data-variant="lightline"] .bar .cap, :root[data-skin="grid"][data-variant="lightline"] .bar .end { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); }
+:root[data-skin="grid"][data-variant="lightline"] .emblem { filter: drop-shadow(0 0 18px color-mix(in srgb, var(--accent) 70%, transparent)); }
+
+/* Room: keep the ceiling quieter so titles stay readable. */
+:root[data-variant="room"] .scene .ceiling { opacity: 0.5; }
+@media (prefers-reduced-motion: reduce) {
+  .scene .floor, .scene .ceiling, .scene .rings circle { animation: none; }
+}
