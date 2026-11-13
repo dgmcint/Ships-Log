@@ -1088,3 +1088,56 @@ button:disabled { opacity: 0.6; cursor: progress; }
 .sd-edit { display: inline-flex; align-items: center; gap: 6px; }
 .sd-input { width: 96px; font: inherit; font-size: 14px; padding: 2px 8px; color: var(--text); background: rgba(0,0,0,.25); border: 1px solid var(--line); border-radius: 8px; text-align: center; }
 :root[data-skin="daylight"] .sd-input { background: #fff; }
+
+/* ---------- Reading an entry ---------- */
+.read-head .read-kicker { color: var(--accent); }
+.reader { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 760px; margin: 0 auto; padding: 18px 20px 22px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.read-tags { justify-content: flex-start; gap: 8px; flex-wrap: wrap; }
+.read-title { margin: 0; font-size: 28px; line-height: 1.2; color: var(--text); letter-spacing: var(--tracking); text-transform: var(--case); }
+.read-date { margin-top: -6px; }
+.read-body { font-family: "Lora", Georgia, serif; font-size: 18px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--entry-text, var(--text)); text-transform: none; letter-spacing: 0; }
+.read-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 14px; }
+.read-facts dt { color: var(--muted); text-transform: var(--case); letter-spacing: var(--tracking); }
+.read-facts dd { margin: 0; color: var(--text); }
+.read-nav { width: 100%; max-width: 760px; margin: 0 auto; }
+.read-nav .small-btn:disabled { opacity: .35; }
+:root[data-skin="classic"] .reader { border: 8px solid #2a2a2f; border-radius: 18px; background: #06110a; box-shadow: 0 0 0 2px #55555c, inset 0 0 26px rgba(80,255,130,.12); }
+:root[data-skin="classic"] .read-body { color: var(--entry-text, #c8f5d2); }
+:root[data-skin="glass"] .reader { background: var(--glass); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); border-color: rgba(255,255,255,.25); }
+:root[data-skin="flare"] .reader, :root[data-skin="command"] .reader { -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+@media (min-width: 960px) {
+  .screen[data-screen="read"] { align-items: center; }
+  .screen[data-screen="read"] > header { width: 100%; max-width: 760px; }
+  .reader { padding: 30px 40px 34px; }
+  .read-title { font-size: 34px; }
+  .read-body { font-size: 19px; }
+}
+
+/* ---------- Guide ---------- */
+.help-search { width: 100%; }
+.help-toc { display: flex; flex-wrap: wrap; gap: 6px; }
+.help-toc .chip { cursor: pointer; background: transparent; }
+.help-sec { gap: 0; padding: 0; scroll-margin-top: 12px; }
+.help-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; padding: 14px 16px; border: none; background: none; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.help-head .h2 { margin: 0; }
+.help-caret { font-size: 22px; color: var(--accent); line-height: 1; }
+.help-body { display: flex; flex-direction: column; gap: 10px; padding: 0 16px 16px; }
+.help-body p, .help-body li { margin: 0; font-size: 15px; line-height: 1.55; color: var(--text); text-transform: none; letter-spacing: 0; }
+.help-body ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.help-keys { display: grid; grid-template-columns: minmax(120px, max-content) 1fr; gap: 6px 16px; margin: 0; font-size: 14px; }
+.help-keys dt { color: var(--accent); font-weight: 600; }
+.help-keys dd { margin: 0; color: var(--text); }
+.help-foot { text-align: center; }
+:root[data-skin="classic"] .help-body p, :root[data-skin="classic"] .help-body li, :root[data-skin="classic"] .help-keys dd { color: #c8f5d2; }
+@media (min-width: 960px) {
+  .screen[data-screen="help"] { align-items: center; }
+  .screen[data-screen="help"] > * { width: 100%; max-width: 860px; }
+}
+@media (max-width: 959px) { .help-toc { display: none; } }
+
+/* ---------- Read aloud ---------- */
+.segment.wrap { flex-wrap: wrap; }
+.segment.wrap button { flex: 1 1 auto; }
+select.field { appearance: auto; -webkit-appearance: menulist; width: 100%; }
+.voice-slider input[type="range"] { width: 100%; accent-color: var(--accent); }
+.read-head > .row .small-btn { white-space: nowrap; }

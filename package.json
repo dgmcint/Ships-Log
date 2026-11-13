@@ -7,7 +7,8 @@
     "dev": "tauri dev",
     "build": "tauri build",
     "ios": "tauri ios dev",
-    "android": "tauri android dev"
+    "android": "tauri android dev",
+    "manual": "node tools/make-manual.js"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

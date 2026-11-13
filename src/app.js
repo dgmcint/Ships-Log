@@ -302,6 +302,8 @@ const ICON = {
   photo: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 8"/>',
   video: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  speaker: '<path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>',
+  help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6"/><path d="M12 17.5h.01"/>',
   grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
@@ -378,7 +380,12 @@ const state = {
     shipTerms: true,   // ship names (Bridge, Engineering…) in place of plain labels
     voiceCommands: true, // "Make it so", "Belay that"… while dictating
     dateStyle: "both", // "both", "stardate" (stardates only) or "calendar" (calendar dates only)
-    storyMode: false,  // stardates are set by the writer, for telling a story; logs listed in stardate order
+    storyMode: false,
+    voiceName: "",     // system voice for Read aloud; "" = system default
+    voiceStyle: "standard", // standard, captain, computer, narrator or custom
+    voiceRate: 1,      // custom style speed
+    voicePitch: 1,     // custom style pitch
+    readIntro: true,   // start with "Captain's log, stardate …"  // stardates are set by the writer, for telling a story; logs listed in stardate order
     layout: null,      // computer home screen panels (Glass, Flare, Daylight, Grid); null = default
   },
   arranging: false,    // arrange mode on the computer home screen
@@ -397,6 +404,7 @@ const appEl = document.querySelector(".app");
 
 function go(screen) {
   if (screen !== "logs") state.arranging = false;
+  if (screen !== state.screen) stopSpeaking();
   state.screen = screen;
   render();
   screenEl.scrollTop = 0;
@@ -480,10 +488,11 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitCoverTi
 if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", fitCoverTitle);
 
 document.querySelectorAll(".nav [data-go]").forEach((b) => {
-    if (b.dataset.go === state.screen) b.setAttribute("aria-current", "page");
+    const here = state.screen === "read" ? (["search", "crew", "map"].includes(state.readBack) ? state.readBack : "logs") : state.screen;
+    if (b.dataset.go === here) b.setAttribute("aria-current", "page");
     else b.removeAttribute("aria-current");
   });
-  const view = { cover: CoverScreen, logs: LogsScreen, compose: ComposeScreen, search: SearchScreen, crew: CrewScreen, map: MapScreen, settings: SettingsScreen, gallery: GalleryScreen, onthisday: OnThisDayScreen }[state.screen];
+  const view = { cover: CoverScreen, logs: LogsScreen, compose: ComposeScreen, read: ReadScreen, help: HelpScreen, search: SearchScreen, crew: CrewScreen, map: MapScreen, settings: SettingsScreen, gallery: GalleryScreen, onthisday: OnThisDayScreen }[state.screen];
   screenEl.dataset.screen = state.screen;
   screenEl.replaceChildren(...[view()].flat(Infinity).filter(Boolean));
   fitCoverTitle();
@@ -551,7 +560,7 @@ function SkinPicker() {
 
 function EntryCard(e, q) {
   const glyph = state.prefs.glyphs && !(e.media || []).length;
-  return h("button", { type: "button", class: "card" + (glyph ? " has-glyph" : ""), onclick: () => openCompose(e) },
+  return h("button", { type: "button", class: "card" + (glyph ? " has-glyph" : ""), onclick: () => openEntry(e) },
     h("div", { class: "row" },
       h("span", { class: "pill", title: typePlain(e.logType), style: { "--c": typeColor(e.logType) } }, typeLabel(e.logType)),
       h("span", { class: "small row", style: { gap: "6px", "justify-content": "flex-end" } },
@@ -984,7 +993,7 @@ function stamp(iso) {
 
 function RowCard(e) {
   const [, , color] = condition(e.condition);
-  return h("button", { type: "button", class: "msg-row", onclick: () => openCompose(e) },
+  return h("button", { type: "button", class: "msg-row", onclick: () => openEntry(e) },
     h("span", { class: "msg-arrow", "aria-hidden": "true" }, "\u25B6"),
     h("span", { class: "msg-type" }, typeLabel(e.logType).toUpperCase()),
     h("span", { class: "msg-when" }, showCalendar() ? stamp(e.created) : `SD ${sd1(e.stardate)}`),
@@ -1202,7 +1211,7 @@ function ConsoleWide() {
       h("section", { class: "lw-file" },
         LogPad("lw-pad"),
         h("div", { class: "lw-file-head" }, h("span", {}, "FILE = " + T("SHIP'S LOG", "CAPTAIN'S LOG")), h("span", {}, "ENTRY BY " + (state.ship.captain ? state.ship.captain : "CAPTAIN").toUpperCase())),
-        state.entries.length ? state.entries.map((e) => h("button", { type: "button", class: "lw-row", onclick: () => openCompose(e) },
+        state.entries.length ? state.entries.map((e) => h("button", { type: "button", class: "lw-row", onclick: () => openEntry(e) },
           h("span", { class: "lw-dot", style: { background: condition(e.condition)[2] } }),
           h("span", { class: "lw-n" }, entryDate(e)),
           h("span", { class: "lw-n" }, num(wordCount(e), 4)),
@@ -1525,7 +1534,9 @@ function SettingsScreen() {
   return [
     h("header", { class: "row", style: { "justify-content": "flex-start", gap: "6px" } },
       h("button", { type: "button", class: "small-btn icon-btn", "aria-label": "Back to logs", onclick: () => { backupUi.restoreArmed = false; go("logs"); } }, svg(ICON.back)),
-      h("h1", { class: "title" }, T("Settings", "Engineering"))
+      h("h1", { class: "title" }, T("Settings", "Engineering")),
+      h("span", { style: { flex: "1" } }),
+      h("button", { type: "button", class: "small-btn", title: "Guide: how everything works (F1)", onclick: () => openHelp() }, svg(ICON.help), T("Guide", "Ship's manual"))
     ),
 
     h("section", { class: "card settings-card" },
@@ -1536,6 +1547,8 @@ function SettingsScreen() {
     ),
 
     DisplayOptions(),
+
+    VoiceSettings(),
 
     h("section", { class: "card settings-card" },
       h("h2", { class: "h2" }, T("Backup", "Transporter Room")),
@@ -2198,6 +2211,94 @@ function closeViewer() {
 
 document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeViewer(); });
 
+// ---------- Reading an entry ----------
+
+/** Opens a log to read. Editing is a separate button on the reading screen. */
+function openEntry(e) {
+  if (state.screen !== "read") state.readBack = state.screen === "compose" ? "logs" : state.screen;
+  state.readingId = e.id;
+  stopPlayback();
+  stopSpeaking();
+  go("read");
+  document.getElementById("screen").scrollTop = 0;
+}
+
+function editEntry(e) {
+  stopPlayback();
+  stopSpeaking();
+  openCompose(e, { returnTo: "read" });
+}
+
+function ReadScreen() {
+  const list = state.entries;
+  const i = list.findIndex((x) => x.id === state.readingId);
+  if (i < 0) { setTimeout(() => go("logs")); return []; }
+  const e = list[i];
+  const newer = list[i - 1], older = list[i + 1];
+  const back = () => { stopPlayback(); go(state.readBack || "logs"); };
+  const recs = e.recordings || [], media = e.media || [];
+  const facts = [
+    (e.crew || []).length ? ["Crew", e.crew.join(", ")] : null,
+    e.place ? [T("Place", "Location"), e.place] : null,
+  ].filter(Boolean);
+  const step = (x, label, plain) => h("button", { type: "button", class: "small-btn", disabled: !x, title: plain, onclick: () => x && openEntry(x) }, label);
+  return [
+    h("header", { class: "row read-head" },
+      h("button", { type: "button", class: "small-btn icon-btn", "aria-label": "Back", title: "Back", onclick: back }, svg(ICON.back)),
+      h("span", { class: "h2 read-kicker" }, T("Log entry", "Captain's log")),
+      h("span", { class: "row", style: { gap: "8px" } },
+        ReadAloudButton(e),
+        h("button", { type: "button", class: "small-btn filled", title: "Edit this entry (E)", onclick: () => editEntry(e) }, svg(ICON.pen), T("Edit", "Amend log")))
+    ),
+    h("article", { class: "reader" },
+      h("div", { class: "row read-tags" },
+        h("span", { class: "pill", title: typePlain(e.logType), style: { "--c": typeColor(e.logType) } }, typeLabel(e.logType)),
+        h("span", { class: "chip", title: conditionTag(e.condition), style: { "--c": condition(e.condition)[2] } }, conditionTag(e.condition))
+      ),
+      h("h1", { class: "read-title" }, e.title || "Untitled"),
+      h("div", { class: "small read-date" }, dateLine(e.stardate, new Date(e.created))),
+      e.body ? h("div", { class: "read-body" }, e.body) : h("div", { class: "small" }, "No written entry."),
+      media.length
+        ? h("section", { class: "stack" },
+            h("span", { class: "label" }, T("Photos & video", "Viewscreen")),
+            h("div", { class: "media-grid" }, media.map((m) =>
+              h("button", { type: "button", class: "tile", "aria-label": m.kind === "video" ? `Video, ${clock(m.seconds)}` : "Photo", onclick: () => openViewer(null, m) },
+                m.thumb ? h("img", { src: api.mediaUrl(m.thumb), alt: "" }) : h("span", { class: "tile-icon" }, svg(m.kind === "video" ? ICON.video : ICON.photo)),
+                m.kind === "video" ? h("span", { class: "tile-badge" }, svg(ICON.play), clock(m.seconds)) : null))))
+        : null,
+      recs.length
+        ? h("section", { class: "stack" },
+            h("span", { class: "label" }, T("Recordings", "Communications")),
+            h("div", { class: "list" }, recs.map((rec, n) => {
+              const playing = recorder.playing && recorder.playing.file === rec.file;
+              return h("div", { class: "recording" },
+                h("button", { type: "button", class: "small-btn", "aria-label": playing ? "Pause" : "Play",
+                  style: playing ? { color: "var(--accent)", "border-color": "var(--accent)" } : null, onclick: () => togglePlay(rec) },
+                  svg(playing ? ICON.pause : ICON.play)),
+                h("span", { class: "stack", style: { flex: "1", gap: "2px" } },
+                  h("span", { class: "h3", style: { "font-size": "15px" } }, `Recording ${n + 1}`),
+                  h("span", { class: "small" }, clock(rec.seconds))));
+            })))
+        : null,
+      facts.length ? h("dl", { class: "read-facts" }, facts.map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])) : null
+    ),
+    h("div", { class: "row read-nav" },
+      step(newer, "‹ Newer", "The log above this one in the list (←)"),
+      h("span", { class: "small" }, `${i + 1} of ${list.length}`),
+      step(older, "Older ›", "The log below this one in the list (→)"))
+  ];
+}
+
+// On a computer: ← and → step through logs, E edits.
+document.addEventListener("keydown", (ev) => {
+  if (state.screen !== "read" || mediaState.viewing || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+  const list = state.entries, i = list.findIndex((x) => x.id === state.readingId);
+  if (ev.key === "ArrowLeft" && list[i - 1]) openEntry(list[i - 1]);
+  else if (ev.key === "ArrowRight" && list[i + 1]) openEntry(list[i + 1]);
+  else if ((ev.key === "e" || ev.key === "E") && list[i]) editEntry(list[i]);
+});
+
 // ---------- Entry screen ----------
 
 function openCompose(entry, opts = {}) {
@@ -2209,6 +2310,7 @@ function openCompose(entry, opts = {}) {
         logType: "personal", condition: "calm", title: "", body: "",
         crewText: "", place: "", locked: false, recordings: [], media: [],
       };
+  state.draft.returnTo = opts.returnTo || "logs";
   if (opts.title) state.draft.title = opts.title;
   if (opts.body) state.draft.body = opts.body;
   Object.assign(state.draft, { newFiles: [], removedFiles: [], newMediaFiles: [], removedMediaFiles: [], pending: [] });
@@ -2228,7 +2330,7 @@ async function closeCompose() {
   await stopRecording(true);
   stopPlayback();
   closeViewer();
-  go("logs");
+  go(d.returnTo || "logs");
   // Tidy up anything added since the entry was opened, once uploads settle.
   await Promise.allSettled(d.pending);
   for (const f of d.newFiles) await api.deleteAudio(f).catch(() => {});
@@ -2270,7 +2372,8 @@ function ComposeScreen() {
     for (const f of d.removedFiles) await api.deleteAudio(f).catch(() => {});
     for (const f of d.removedMediaFiles) await api.deleteMedia(f).catch(() => {});
     await refresh();
-    go("logs");
+    if (d.returnTo === "read") state.readingId = d.id;
+    go(d.returnTo || "logs");
   }
 
   voiceAction.save = () => save();

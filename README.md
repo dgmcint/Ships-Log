@@ -4,6 +4,10 @@ A starship-style personal journal built with [Tauri 2](https://tauri.app): a Rus
 
 ## What's in it
 
+- **Guide**: Settings > Guide (Ship's manual), or F1 on a computer, opens a searchable guide to every feature. The same text is in [MANUAL.md](MANUAL.md); after changing `src/help.js`, run `npm run manual` to update it.
+- **Read aloud**: the reading screen's Read aloud (Computer, read) button, or R on a computer, speaks the log with the device's built-in voices. Settings > Read aloud chooses the voice and a style (Standard, Captain, Ship's computer, Narrator or Custom speed and pitch), and whether it starts with "Captain's log, stardate …".
+- **Reading logs**: tap a log to read it. Edit (Amend log) is a separate button; ‹ Newer and Older › (or ← and → on a computer) step through logs.
+
 - **Logs**: recent entries, a "Begin recording" button and a log date (a stardate-style number).
 - **Dictation**: "Dictate a log" opens a new entry and starts listening; your words appear in the entry as you speak. Say "period", "comma", "question mark", "new line" or "new paragraph" for punctuation. You can type in the entry at any time, during dictation too.
 - **Audio logs**: "Record audio" starts a sound recording right away; the entry screen can record more, play back and delete recordings. Audio is saved as files next to your journal.
@@ -76,6 +80,8 @@ src/                  the interface (no build step)
   skins.css           one block of variables per skin
   styles.css          layout and components; reads the skin variables
   app.js              screens and logic
+  help.js             the in-app guide (also used to make MANUAL.md)
+  voice.js            reading logs aloud
 src-tauri/
   src/lib.rs          Rust: load/save/search/delete entries
   src/main.rs         desktop entry point
