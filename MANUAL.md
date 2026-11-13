@@ -86,6 +86,8 @@ Spoken commands work at the end of what you say:
 
 If you'd say one of these phrases at the end of a real sentence, turn off Spoken commands in Settings > Display options.
 
+On iPhone, iPad and Android, Settings > Display options > Dictation chooses how: App listens (understands spoken commands) or Keyboard microphone (Dictate opens the keyboard and you tap its microphone; usually the most accurate on a phone, but spoken commands don't work). If the app misses words, try Keyboard microphone.
+
 Where the app can listen itself: Mac, iPhone and iPad (the app asks once for microphone and speech access). On Windows, Android and Linux, the Dictate button shows how to use the system's own dictation instead: Windows + H on Windows, the microphone on the keyboard on phones. It types straight into the entry.
 
 ## Audio recordings
@@ -131,6 +133,7 @@ Settings > Appearance (Holo Deck) changes the look. Your logs are the same in ev
 
 Display options (Main Helm) work in every skin:
 
+- Text size: Small, Normal, Large, Larger or Largest. Makes all the writing in the app bigger or smaller.
 - Accent color: recolors buttons, titles and highlights.
 - Condition colors: Off, Subtle (the top bar changes color when your latest log is Caution or Critical) or Full (the whole app turns yellow or red).
 - Activity readout (Ship's Status): your last 7 days. The ring shows how many days have a log, the line shows words written each day, the bars show logs per day.
@@ -242,6 +245,8 @@ If a folder named "Ships Log Data" sits right next to the app, the app keeps eve
 
 ## Troubleshooting
 
+- Dictation misses words on a phone: speak in steady phrases, or switch Settings > Display options > Dictation to Keyboard microphone.
+- Text is too small: Settings > Display options > Text size.
 - Dictation or recording doesn't start: check the app is allowed to use the microphone (Mac: System Settings > Privacy & Security > Microphone and Speech Recognition; Windows: Settings > Privacy > Microphone).
 - "Can't be opened" or "Windows protected your PC" the first time: the app isn't signed yet. On a Mac, right-click the app and choose Open. On Windows, choose More info, then Run anyway.
 - A video won't play on a computer: install FFmpeg (Mac: brew install ffmpeg; Windows: winget install ffmpeg) and add the video again.

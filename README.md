@@ -14,6 +14,8 @@ A starship-style personal journal built with [Tauri 2](https://tauri.app): a Rus
 - **Write**: opens a blank entry to type.
 - **Photos & video**: "Add" on the entry screen takes a photo or video with the camera (on phones) or picks from your library or files. Tap one to view or play it full screen, or delete it.
 - **Display options** (Settings): work in every skin.
+  - *Text size*: Small, Normal, Large, Larger or Largest, for all the writing in the app.
+  - *Dictation* (phones and tablets): App listens, or Keyboard microphone (the phone's own dictation, usually more accurate; spoken commands don't work that way).
   - *Accent color*: recolors buttons, titles and highlights.
   - *Condition colors*: Off, Subtle (the top bar changes color when your latest log is Caution or Critical) or Full (the whole app turns yellow or red).
   - *Activity readout*: a graph of your last 7 days on the Logs screen. The ring shows how many of the 7 days have a log, the line shows words written each day, and the bars show logs made each day, with today on the right.

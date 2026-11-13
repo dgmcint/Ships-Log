@@ -79,8 +79,6 @@ const conditionTag = (k) => {
 // ---------- Storage ----------
 
 const tauri = window.__TAURI__ && window.__TAURI__.core;
-// In a browser (no Tauri), web.js provides storage and backups.
-const web = tauri ? null : window.ShipsLogWeb;
 
 function matches(e, q, logType) {
   if (logType && logType !== "all" && e.logType !== logType) return false;
@@ -99,6 +97,16 @@ const newestFirst = (list) => [...list].sort((a, b) => b.created.localeCompare(a
 const memoryAudio = new Map();
 const memoryMedia = new Map();
 const memoryUrls = new Map();
+
+const browserStore = {
+  read() {
+    try { return JSON.parse(localStorage.getItem("shipslog.entries") || "[]"); }
+    catch { return []; }
+  },
+  write(list) {
+    try { localStorage.setItem("shipslog.entries", JSON.stringify(list)); } catch {}
+  },
+};
 
 const api = tauri
   ? {
@@ -148,103 +156,67 @@ const api = tauri
       },
     }
   : {
-      // Web browser (and iPhone home-screen app): everything lives in the browser's
-      // own database, through web.js. Recordings, photos and video are also kept in
-      // the maps above while the page is open, so playback stays instant.
-      async mediaDir() {
-        // First thing called at start-up: pull the saved files into memory.
-        await loadBrowserFiles();
-        return "";
-      },
-      async saveMedia(file, blob, onProgress) {
-        await web.putBlob("media", file, blob);
-        memoryMedia.set(file, blob);
-        if (onProgress) onProgress(1);
-        return file;
-      },
-      async deleteMedia(file) {
-        await web.deleteBlob("media", file);
-        memoryMedia.delete(file);
-        forgetUrl(file);
-      },
+      // Browser preview only: photos and video live in memory until the page reloads.
+      async saveMedia(file, blob, onProgress) { memoryMedia.set(file, blob); if (onProgress) onProgress(1); return file; },
+      async deleteMedia(file) { memoryMedia.delete(file); },
       async convertVideo() { return null; },
+      async mediaDir() { return ""; },
+      // Browser preview: backups are a download of the journal text (no media).
       async saveSettings(s) { try { localStorage.setItem("shipslog.settings", s); } catch {} },
-      async dataLocation() {
-        return { path: web.isInstalled() ? "this phone (inside the Ship's Log app)" : "this browser's storage on this device", portable: false, portable_folder: "Ships Log Data", app_folder: null };
-      },
-      async makePortable() { throw "Portable mode works in the installed Mac, Windows or Linux app."; },
-      async moveData() { throw "Moving the log works in the installed Mac, Windows or Linux app."; },
-      async restartApp() { location.reload(); },
+      async dataLocation() { return { path: "this browser's storage (preview only)", portable: false, portable_folder: "Ships Log Data", app_folder: null }; },
+      async makePortable() { throw "Portable mode works in the installed app."; },
+      async moveData() { throw "Moving the log works in the installed app."; },
+      async restartApp() {},
       async showDataFolder() {},
       async backupStatus() {
         const last = Number(localStorage.getItem("shipslog.lastBackup") || 0);
         return { lastBackup: last || null, autoFolder: null, autoEveryDays: 7 };
       },
       async backupNow() {
-        const result = await web.makeBackup(localStorage.getItem("shipslog.settings") || "{}");
-        const stamp = new Date().toISOString().slice(0, 10);
-        const how = await web.deliver(result.blob, `ShipsLog-${stamp}.zip`);
-        if (how === "cancelled") return null;
+        const data = JSON.stringify({ entries: browserStore.read(), settings: JSON.parse(localStorage.getItem("shipslog.settings") || "{}") }, null, 2);
+        const a = h("a", { href: URL.createObjectURL(new Blob([data], { type: "application/json" })), download: "ShipsLog-preview-backup.json" });
+        a.click();
         localStorage.setItem("shipslog.lastBackup", String(Math.floor(Date.now() / 1000)));
-        return { path: how === "shared" ? "where you chose in the share sheet" : "your Downloads folder", bytes: result.bytes, entries: result.entries, files: result.files };
+        return { path: "your Downloads folder", bytes: data.length, entries: browserStore.read().length, files: 0 };
       },
       async restoreBackup() {
-        const file = await web.pickFile(".zip,application/zip");
+        const file = await new Promise((resolve) => {
+          const input = h("input", { type: "file", accept: ".json", onchange: () => resolve(input.files[0] || null) });
+          input.click();
+        });
         if (!file) return null;
-        const settings = await web.restoreBackup(file);
-        await loadBrowserFiles(true);
-        return settings;
+        const data = JSON.parse(await file.text());
+        if (!Array.isArray(data.entries)) throw new Error("That file isn't a Ship's Log preview backup.");
+        browserStore.write(data.entries);
+        return JSON.stringify(data.settings || {});
       },
       async setAutoBackup() { return this.backupStatus(); },
       mediaUrl(file) {
         if (!memoryUrls.has(file) && memoryMedia.has(file)) memoryUrls.set(file, URL.createObjectURL(memoryMedia.get(file)));
         return memoryUrls.get(file) || "";
       },
-      async saveAudio(file, blob) {
-        await web.putBlob("audio", file, blob);
-        memoryAudio.set(file, blob);
-        return file;
-      },
+      // Browser preview only: recordings live in memory until the page reloads.
+      async saveAudio(file, blob) { memoryAudio.set(file, blob); return file; },
       async loadAudio(rec) {
-        let blob = memoryAudio.get(rec.file) || (await web.getBlob("audio", rec.file));
-        if (!blob) throw new Error("This recording is missing from the browser's storage.");
-        if (rec.mime && blob.type !== rec.mime) blob = new Blob([blob], { type: rec.mime });
+        const blob = memoryAudio.get(rec.file);
+        if (!blob) throw new Error("This recording was made in an earlier browser session.");
         return blob;
       },
-      async deleteAudio(file) {
-        await web.deleteBlob("audio", file);
-        memoryAudio.delete(file);
-      },
-      async list() { return newestFirst(await web.listEntries()); },
+      async deleteAudio(file) { memoryAudio.delete(file); },
+      async list() { return newestFirst(browserStore.read()); },
       async save(entry) {
+        const list = browserStore.read();
         if (!entry.id) entry.id = "log-" + Date.now();
-        await web.saveEntry(entry);
+        const i = list.findIndex((e) => e.id === entry.id);
+        if (i >= 0) list[i] = entry; else list.push(entry);
+        browserStore.write(list);
         return entry;
       },
-      async remove(id) { await web.deleteEntry(id); },
+      async remove(id) { browserStore.write(browserStore.read().filter((e) => e.id !== id)); },
       async search(query, logType) {
-        return newestFirst((await web.listEntries()).filter((e) => matches(e, query.trim(), logType)));
+        return newestFirst(browserStore.read().filter((e) => matches(e, query.trim(), logType)));
       },
     };
-
-/** Browser only: loads saved recordings, photos and video into memory (again, after a restore). */
-async function loadBrowserFiles(reset) {
-  if (!web) return;
-  if (reset) {
-    memoryUrls.forEach((url) => URL.revokeObjectURL(url));
-    memoryUrls.clear();
-    memoryAudio.clear();
-    memoryMedia.clear();
-  }
-  for (const [file, blob] of await web.allBlobs("audio")) memoryAudio.set(file, blob);
-  for (const [file, blob] of await web.allBlobs("media")) memoryMedia.set(file, blob);
-}
-
-function forgetUrl(file) {
-  const url = memoryUrls.get(file);
-  if (url) URL.revokeObjectURL(url);
-  memoryUrls.delete(file);
-}
 
 // ---------- Helpers ----------
 
@@ -413,7 +385,9 @@ const state = {
     voiceStyle: "standard", // standard, captain, computer, narrator or custom
     voiceRate: 1,      // custom style speed
     voicePitch: 1,     // custom style pitch
-    readIntro: true,   // start with "Captain's log, stardate …"  // stardates are set by the writer, for telling a story; logs listed in stardate order
+    readIntro: true,   // start with "Captain's log, stardate …"
+    textSize: 1,       // 0.9 small … 1.5 largest; scales all text
+    dictationMode: "app", // "app": the app listens; "keyboard": use the phone's keyboard microphone  // stardates are set by the writer, for telling a story; logs listed in stardate order
     layout: null,      // computer home screen panels (Glass, Flare, Daylight, Grid); null = default
   },
   arranging: false,    // arrange mode on the computer home screen
@@ -454,6 +428,7 @@ function readableOn(hex) {
 function applyLook() {
   const root = document.documentElement;
   const p = state.prefs;
+  root.style.setProperty("--ts", String(p.textSize || 1));
   const alert = (state.entries[0] && state.entries[0].condition) || "calm";
   root.dataset.alert = alert;
   root.dataset.alertMode = p.alertMode;
@@ -512,6 +487,7 @@ function fitCoverTitle() {
   }
 }
 window.addEventListener("resize", fitCoverTitle);
+["gesturestart", "gesturechange"].forEach((t) => document.addEventListener(t, (e) => e.preventDefault(), { passive: false }));
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitCoverTitle);
 if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener("loadingdone", fitCoverTitle);
 
@@ -1485,6 +1461,24 @@ function DisplayOptions() {
     h("h2", { class: "h2" }, T("Display options", "Main Helm")),
 
     h("div", { class: "stack" },
+      h("span", { class: "label", id: "tsize-label" }, "Text size"),
+      h("div", { class: "segment wrap text-sizes", role: "group", "aria-labelledby": "tsize-label" },
+        [[0.9, "Small"], [1, "Normal"], [1.15, "Large"], [1.3, "Larger"], [1.5, "Largest"]].map(([v, name]) =>
+          h("button", { type: "button", "aria-pressed": String((p.textSize || 1) === v), style: { "font-size": `calc(${Math.round(13 * v)}px)` },
+            onclick: () => { setPref("textSize", v); requestAnimationFrame(fitCoverTitle); } }, name))),
+      h("span", { class: "small" }, "Makes all the writing in the app bigger or smaller.")
+    ),
+    isTouchDevice() ? h("div", { class: "stack" },
+      h("span", { class: "label", id: "dmode-label" }, "Dictation"),
+      h("div", { class: "segment", role: "group", "aria-labelledby": "dmode-label" },
+        [["app", "App listens"], ["keyboard", "Keyboard microphone"]].map(([k, name]) =>
+          h("button", { type: "button", "aria-pressed": String((p.dictationMode || "app") === k), onclick: () => setPref("dictationMode", k) }, name))),
+      h("span", { class: "small" }, (p.dictationMode === "keyboard")
+        ? "Dictate opens the keyboard; tap its microphone. Usually the most accurate on a phone. Spoken commands (make it so…) don't work this way."
+        : "The app listens and understands spoken commands. If it misses words, try Keyboard microphone.")
+    ) : null,
+
+    h("div", { class: "stack" },
       h("span", { class: "label", id: "accent-label" }, "Accent color"),
       h("div", { class: "swatches", role: "group", "aria-labelledby": "accent-label" },
         ACCENT_COLORS.map(([c, name]) =>
@@ -1786,6 +1780,11 @@ async function removeRecording(d, rec) {
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 const dictation = { rec: null, active: false, interim: "", hint: "" };
 
+function isTouchDevice() {
+  const ua = navigator.userAgent;
+  return /iPhone|iPad|iPod|Android/i.test(ua) || (/Mac/i.test(ua) && navigator.maxTouchPoints > 1);
+}
+
 function platformDictationHint() {
   const ua = navigator.userAgent;
   const touchMac = /Mac/i.test(ua) && navigator.maxTouchPoints > 1; // iPad reports itself as a Mac
@@ -1867,6 +1866,12 @@ function startDictation() {
   if (dictation.active) return;
   if (recorder.active) stopRecording();
   dictation.hint = "";
+  if (state.prefs.dictationMode === "keyboard" && isTouchDevice()) {
+    dictation.hint = "Tap the microphone on the keyboard and speak. Tap it again (or the keyboard key) to stop.";
+    render();
+    focusBody();
+    return;
+  }
   if (!SpeechRec) {
     dictation.hint = platformDictationHint();
     render();
@@ -1878,6 +1883,7 @@ function startDictation() {
   rec.interimResults = true;
   rec.lang = navigator.language || "en-US";
   rec.onresult = (ev) => {
+    dictation.heard = Date.now();
     let interim = "";
     for (let i = ev.resultIndex; i < ev.results.length; i++) {
       const r = ev.results[i];
@@ -1905,9 +1911,23 @@ function startDictation() {
     if (state.screen === "compose") { render(); focusBody(); }
   };
   rec.onend = () => {
+    // Words still being recognized when listening ends would be lost (iPhone often ends
+    // without marking them final), so keep them.
+    if (dictation.interim && state.draft && dictation.rec === rec) {
+      appendDictated(state.draft, dictation.interim);
+      dictation.interim = "";
+      showInterim();
+      const ta = document.getElementById("entry-body");
+      if (ta) ta.value = state.draft.body;
+    }
     // Some systems stop listening after a pause; carry on until Stop is tapped.
+    // A short wait first: starting again at once fails on iPhone.
     if (dictation.active && dictation.rec === rec) {
-      try { rec.start(); return; } catch {}
+      setTimeout(() => {
+        if (!dictation.active || dictation.rec !== rec) return;
+        try { rec.start(); } catch { dictation.active = false; dictation.rec = null; startDictation(); }
+      }, 250);
+      return;
     }
     if (dictation.rec === rec) dictation.rec = null;
     dictation.active = false;
