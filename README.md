@@ -58,6 +58,15 @@ These are each system's standard, hidden places for app data, so the log can't b
 
 If a folder named **`Ships Log Data`** sits right next to the app (next to `Ships Log.exe` on Windows, the `.AppImage` on Linux, or `Ship's Log.app` on a Mac), the app keeps everything in that folder instead, so the app and its log can travel together on a USB drive. Settings > Make portable copies your current log into that folder; the app then restarts to use it. The GitHub release includes a ready-made portable Windows zip. On a Mac, macOS may run an app from a download or disk image in a hidden temporary location; move it into its folder (or onto the drive) first so it finds `Ships Log Data`.
 
+## Browser version
+
+The same app also runs in a web browser, with nothing to install: https://dgmcint.github.io/Ships-Log/ (published from `src/` by `.github/workflows/pages.yml` on every push to main; turn it on once in the repository's Settings > Pages > Source: GitHub Actions).
+
+- Logs, recordings, photos and video are kept in the browser's own storage (`src/web.js`), so they survive reloads. Backups are the same `.zip` files the installed app makes, so a backup moves freely between the browser, the Mac and the phone.
+- On an iPhone, open the address in Safari, tap Share, then Add to Home Screen. It then opens full screen like an app and works offline (`src/sw.js`, `src/manifest.webmanifest`).
+- Browser storage belongs to that one browser on that one device; clearing the browser's website data erases it. Back up regularly.
+- `src/vendor/fflate.js` (MIT) makes and opens the backup zips.
+
 ## Microphone permission
 
 Each system has to be told the app uses the microphone. Most of this is already in place:

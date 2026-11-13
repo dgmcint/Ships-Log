@@ -16,13 +16,32 @@ const VOICE_STYLES = [
 const tts = { speaking: false, voices: [] };
 const canSpeak = () => typeof window !== "undefined" && "speechSynthesis" in window && typeof SpeechSynthesisUtterance !== "undefined";
 
+// Apple's old novelty voices (Bubbles, Zarvox…) and the robotic 1990s ones are hidden unless asked for.
+const NOVELTY = /^(Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Deranged|Good News|Hysterical|Jester|Junior|Kathy|Organ|Pipe Organ|Princess|Ralph|Superstar|Trinoids|Whisper|Wobble|Zarvox|Fred|Grandma|Grandpa|Rocko|Sandy|Shelley|Eddy|Flo|Reed)\b/i;
+
+/** How natural a voice sounds: 3 natural/premium, 2 enhanced, 1 standard, 0 novelty. */
+function voiceQuality(v) {
+  const id = (v.name + " " + (v.voiceURI || "")).toLowerCase();
+  if (/premium|natural|neural/.test(id)) return 3;
+  if (/enhanced|siri|google|wavenet|studio/.test(id)) return 2;
+  if (NOVELTY.test(v.name) || /\.speech\.synthesis\.voice\.|eloquence/.test(id)) return 0;
+  return 1;
+}
+
 function loadVoices() {
   if (!canSpeak()) return;
   const all = speechSynthesis.getVoices();
   const lang = (navigator.language || "en").slice(0, 2).toLowerCase();
-  // The person's own language first, then the rest; each group by name.
+  const mine = (v) => v.lang.toLowerCase().startsWith(lang);
+  // Most natural first, then the person's own language, then by name.
   tts.voices = [...all].sort((a, b) =>
-    (b.lang.toLowerCase().startsWith(lang) - a.lang.toLowerCase().startsWith(lang)) || a.name.localeCompare(b.name));
+    (voiceQuality(b) - voiceQuality(a)) || (mine(b) - mine(a)) || a.name.localeCompare(b.name));
+  tts.lang = lang;
+}
+
+/** The voice to use when none is chosen: the most natural one in the person's language. */
+function bestVoice() {
+  return tts.voices.find((v) => v.lang.toLowerCase().startsWith(tts.lang || "en") && voiceQuality(v) >= 1) || null;
 }
 if (canSpeak()) {
   loadVoices();
@@ -33,7 +52,7 @@ function voiceSettings() {
   const p = state.prefs;
   const style = VOICE_STYLES.find(([k]) => k === p.voiceStyle) || VOICE_STYLES[0];
   return {
-    voice: tts.voices.find((v) => v.name === p.voiceName) || null,
+    voice: tts.voices.find((v) => v.name === p.voiceName) || bestVoice(),
     rate: style[0] === "custom" ? p.voiceRate : style[3],
     pitch: style[0] === "custom" ? p.voicePitch : style[4],
   };
@@ -106,6 +125,11 @@ function VoiceSettings() {
     h("span", { class: "row" }, h("span", { class: "label" }, label), h("span", { class: "small" }, Number(p[key]).toFixed(2) + "×")),
     h("input", { type: "range", min, max, step: "0.02", value: p[key], oninput: (ev) => { state.prefs[key] = parseFloat(ev.target.value); ev.target.previousSibling.lastChild.textContent = Number(ev.target.value).toFixed(2) + "×"; },
       onchange: (ev) => setPref(key, parseFloat(ev.target.value)) }));
+  const lang = tts.lang || "en";
+  const listed = tts.voices.filter((v) => p.allVoices || (v.lang.toLowerCase().startsWith(lang) && voiceQuality(v) > 0));
+  const natural = listed.filter((v) => voiceQuality(v) >= 2), standard = listed.filter((v) => voiceQuality(v) < 2);
+  const best = bestVoice();
+  const opt = (v) => h("option", { value: v.name, selected: v.name === p.voiceName }, `${v.name.replace(/\s*\((Premium|Enhanced)\)/i, "")}${voiceQuality(v) === 3 ? " ★★" : voiceQuality(v) === 2 ? " ★" : ""} · ${v.lang}`);
   const sample = `${T("Log entry", "Captain's log")}, ${T("log date", "stardate")} ${spokenStardate(currentStardate())}. All systems are running normally, and the crew is in good spirits.`;
   return h("section", { class: "card settings-card" },
     h("h2", { class: "h2" }, T("Read aloud", "Computer voice")),
@@ -113,8 +137,13 @@ function VoiceSettings() {
     h("label", { class: "stack" },
       h("span", { class: "label" }, "Voice"),
       h("select", { class: "field", onchange: (ev) => setPref("voiceName", ev.target.value) },
-        h("option", { value: "", selected: !p.voiceName }, "System default"),
-        tts.voices.map((v) => h("option", { value: v.name, selected: v.name === p.voiceName }, `${v.name} (${v.lang})`)))),
+        h("option", { value: "", selected: !p.voiceName }, best ? `Best available (${best.name.replace(/\s*\((Premium|Enhanced)\)/i, "")})` : "System default"),
+        natural.length ? h("optgroup", { label: "Natural voices" }, natural.map(opt)) : null,
+        standard.length ? h("optgroup", { label: "Standard voices" }, standard.map(opt)) : null),
+      h("span", { class: "small" }, "★★ sounds most like a person, ★ is close. Voices without stars are the older, more robotic ones.")),
+    natural.some((v) => voiceQuality(v) === 3) ? null : h("p", { class: "small voice-tip" },
+      "No natural-sounding voices are installed yet. They're free: on a Mac, System Settings > Accessibility > Spoken Content > System voice > Manage Voices, and download a voice marked Premium (for example Ava, Zoe or Evan). On iPhone, Settings > Accessibility > Spoken Content > Voices > English, and download an Enhanced or Premium voice. On Windows 11, Settings > Accessibility > Narrator > Add natural voices. Then reopen Ship's Log."),
+    Toggle("Show every voice", "Include other languages and the old novelty voices.", "allVoices"),
     h("div", { class: "stack" },
       h("span", { class: "label", id: "vstyle-label" }, "Style"),
       h("div", { class: "segment wrap", role: "group", "aria-labelledby": "vstyle-label" },
@@ -125,7 +154,7 @@ function VoiceSettings() {
     Toggle("Announce the log", "Start with “Captain's log, stardate …” before reading.", "readIntro"),
     h("button", { type: "button", class: "small-btn", onclick: () => { if (tts.speaking) { stopSpeaking(); render(); } else speak(sample); } },
       svg(tts.speaking ? ICON.stop : ICON.speaker), tts.speaking ? "Stop" : "Hear a sample"),
-    h("p", { class: "small" }, "More voices: on a Mac, System Settings > Accessibility > Spoken Content > System voice > Manage Voices; on iPhone, Settings > Accessibility > Spoken Content > Voices; on Windows, Settings > Time & language > Speech. The enhanced and premium voices sound the most natural."));
+    h("p", { class: "small" }, "For more voices: Mac, System Settings > Accessibility > Spoken Content > System voice > Manage Voices; iPhone, Settings > Accessibility > Spoken Content > Voices; Windows 11, Settings > Accessibility > Narrator > Add natural voices."));
 }
 
 // R reads the open log aloud (or stops) on a computer.

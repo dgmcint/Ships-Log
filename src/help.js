@@ -52,7 +52,8 @@ const HELP = [
       "On the reading screen, Read aloud (Computer, read) speaks the log with one of the voices built into your device. Press it again, or Stop, to stop. On a computer, R does the same.",
       "Settings > Read aloud (Computer voice) chooses how it sounds:",
       [
-        "Voice: any voice your system has. On a Mac, iPhone and Windows you can download more natural \"enhanced\" or \"premium\" voices in the system's speech settings.",
+        "Voice: Best available picks the most natural voice installed. The list shows natural voices first: ★★ sounds most like a person, ★ is close. The older robotic and novelty voices are hidden unless you turn on Show every voice.",
+        "Natural voices are free downloads: on a Mac, System Settings > Accessibility > Spoken Content > System voice > Manage Voices (choose one marked Premium, such as Ava, Zoe or Evan); on iPhone, Settings > Accessibility > Spoken Content > Voices; on Windows 11, Settings > Accessibility > Narrator > Add natural voices. Reopen Ship's Log afterward.",
         "Style: Standard, Captain (deeper and measured), Ship's computer (crisp and quick), Narrator (unhurried), or Custom with your own speed and pitch.",
         "Announce the log: starts with \"Captain's log, stardate …\". Stardates are read digit by digit.",
         "Hear a sample plays a short test.",
