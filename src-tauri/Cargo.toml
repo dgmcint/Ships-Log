@@ -1,6 +1,6 @@
 [package]
 name = "ships-log"
-version = "0.1.0"
+version = "0.1.1"
 description = "A starship-style personal journal"
 edition = "2021"
 
