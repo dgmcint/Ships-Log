@@ -2,3 +2,5 @@ node_modules/
 src-tauri/target/
 src-tauri/gen/schemas/
 .DS_Store
+src-tauri/gen/apple/build/
+src-tauri/gen/apple/xcode-script.sh

@@ -79,6 +79,8 @@ const conditionTag = (k) => {
 // ---------- Storage ----------
 
 const tauri = window.__TAURI__ && window.__TAURI__.core;
+// In a browser (no Tauri), web.js provides storage and backups.
+const web = tauri ? null : window.ShipsLogWeb;
 
 function matches(e, q, logType) {
   if (logType && logType !== "all" && e.logType !== logType) return false;
@@ -97,16 +99,6 @@ const newestFirst = (list) => [...list].sort((a, b) => b.created.localeCompare(a
 const memoryAudio = new Map();
 const memoryMedia = new Map();
 const memoryUrls = new Map();
-
-const browserStore = {
-  read() {
-    try { return JSON.parse(localStorage.getItem("shipslog.entries") || "[]"); }
-    catch { return []; }
-  },
-  write(list) {
-    try { localStorage.setItem("shipslog.entries", JSON.stringify(list)); } catch {}
-  },
-};
 
 const api = tauri
   ? {
@@ -156,67 +148,103 @@ const api = tauri
       },
     }
   : {
-      // Browser preview only: photos and video live in memory until the page reloads.
-      async saveMedia(file, blob, onProgress) { memoryMedia.set(file, blob); if (onProgress) onProgress(1); return file; },
-      async deleteMedia(file) { memoryMedia.delete(file); },
+      // Web browser (and iPhone home-screen app): everything lives in the browser's
+      // own database, through web.js. Recordings, photos and video are also kept in
+      // the maps above while the page is open, so playback stays instant.
+      async mediaDir() {
+        // First thing called at start-up: pull the saved files into memory.
+        await loadBrowserFiles();
+        return "";
+      },
+      async saveMedia(file, blob, onProgress) {
+        await web.putBlob("media", file, blob);
+        memoryMedia.set(file, blob);
+        if (onProgress) onProgress(1);
+        return file;
+      },
+      async deleteMedia(file) {
+        await web.deleteBlob("media", file);
+        memoryMedia.delete(file);
+        forgetUrl(file);
+      },
       async convertVideo() { return null; },
-      async mediaDir() { return ""; },
-      // Browser preview: backups are a download of the journal text (no media).
       async saveSettings(s) { try { localStorage.setItem("shipslog.settings", s); } catch {} },
-      async dataLocation() { return { path: "this browser's storage (preview only)", portable: false, portable_folder: "Ships Log Data", app_folder: null }; },
-      async makePortable() { throw "Portable mode works in the installed app."; },
-      async moveData() { throw "Moving the log works in the installed app."; },
-      async restartApp() {},
+      async dataLocation() {
+        return { path: web.isInstalled() ? "this phone (inside the Ship's Log app)" : "this browser's storage on this device", portable: false, portable_folder: "Ships Log Data", app_folder: null };
+      },
+      async makePortable() { throw "Portable mode works in the installed Mac, Windows or Linux app."; },
+      async moveData() { throw "Moving the log works in the installed Mac, Windows or Linux app."; },
+      async restartApp() { location.reload(); },
       async showDataFolder() {},
       async backupStatus() {
         const last = Number(localStorage.getItem("shipslog.lastBackup") || 0);
         return { lastBackup: last || null, autoFolder: null, autoEveryDays: 7 };
       },
       async backupNow() {
-        const data = JSON.stringify({ entries: browserStore.read(), settings: JSON.parse(localStorage.getItem("shipslog.settings") || "{}") }, null, 2);
-        const a = h("a", { href: URL.createObjectURL(new Blob([data], { type: "application/json" })), download: "ShipsLog-preview-backup.json" });
-        a.click();
+        const result = await web.makeBackup(localStorage.getItem("shipslog.settings") || "{}");
+        const stamp = new Date().toISOString().slice(0, 10);
+        const how = await web.deliver(result.blob, `ShipsLog-${stamp}.zip`);
+        if (how === "cancelled") return null;
         localStorage.setItem("shipslog.lastBackup", String(Math.floor(Date.now() / 1000)));
-        return { path: "your Downloads folder", bytes: data.length, entries: browserStore.read().length, files: 0 };
+        return { path: how === "shared" ? "where you chose in the share sheet" : "your Downloads folder", bytes: result.bytes, entries: result.entries, files: result.files };
       },
       async restoreBackup() {
-        const file = await new Promise((resolve) => {
-          const input = h("input", { type: "file", accept: ".json", onchange: () => resolve(input.files[0] || null) });
-          input.click();
-        });
+        const file = await web.pickFile(".zip,application/zip");
         if (!file) return null;
-        const data = JSON.parse(await file.text());
-        if (!Array.isArray(data.entries)) throw new Error("That file isn't a Ship's Log preview backup.");
-        browserStore.write(data.entries);
-        return JSON.stringify(data.settings || {});
+        const settings = await web.restoreBackup(file);
+        await loadBrowserFiles(true);
+        return settings;
       },
       async setAutoBackup() { return this.backupStatus(); },
       mediaUrl(file) {
         if (!memoryUrls.has(file) && memoryMedia.has(file)) memoryUrls.set(file, URL.createObjectURL(memoryMedia.get(file)));
         return memoryUrls.get(file) || "";
       },
-      // Browser preview only: recordings live in memory until the page reloads.
-      async saveAudio(file, blob) { memoryAudio.set(file, blob); return file; },
+      async saveAudio(file, blob) {
+        await web.putBlob("audio", file, blob);
+        memoryAudio.set(file, blob);
+        return file;
+      },
       async loadAudio(rec) {
-        const blob = memoryAudio.get(rec.file);
-        if (!blob) throw new Error("This recording was made in an earlier browser session.");
+        let blob = memoryAudio.get(rec.file) || (await web.getBlob("audio", rec.file));
+        if (!blob) throw new Error("This recording is missing from the browser's storage.");
+        if (rec.mime && blob.type !== rec.mime) blob = new Blob([blob], { type: rec.mime });
         return blob;
       },
-      async deleteAudio(file) { memoryAudio.delete(file); },
-      async list() { return newestFirst(browserStore.read()); },
+      async deleteAudio(file) {
+        await web.deleteBlob("audio", file);
+        memoryAudio.delete(file);
+      },
+      async list() { return newestFirst(await web.listEntries()); },
       async save(entry) {
-        const list = browserStore.read();
         if (!entry.id) entry.id = "log-" + Date.now();
-        const i = list.findIndex((e) => e.id === entry.id);
-        if (i >= 0) list[i] = entry; else list.push(entry);
-        browserStore.write(list);
+        await web.saveEntry(entry);
         return entry;
       },
-      async remove(id) { browserStore.write(browserStore.read().filter((e) => e.id !== id)); },
+      async remove(id) { await web.deleteEntry(id); },
       async search(query, logType) {
-        return newestFirst(browserStore.read().filter((e) => matches(e, query.trim(), logType)));
+        return newestFirst((await web.listEntries()).filter((e) => matches(e, query.trim(), logType)));
       },
     };
+
+/** Browser only: loads saved recordings, photos and video into memory (again, after a restore). */
+async function loadBrowserFiles(reset) {
+  if (!web) return;
+  if (reset) {
+    memoryUrls.forEach((url) => URL.revokeObjectURL(url));
+    memoryUrls.clear();
+    memoryAudio.clear();
+    memoryMedia.clear();
+  }
+  for (const [file, blob] of await web.allBlobs("audio")) memoryAudio.set(file, blob);
+  for (const [file, blob] of await web.allBlobs("media")) memoryMedia.set(file, blob);
+}
+
+function forgetUrl(file) {
+  const url = memoryUrls.get(file);
+  if (url) URL.revokeObjectURL(url);
+  memoryUrls.delete(file);
+}
 
 // ---------- Helpers ----------
 
