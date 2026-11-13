@@ -23,9 +23,34 @@ A starship-style personal journal built with [Tauri 2](https://tauri.app): a Rus
 - **On this date**: logs written on today's date in past years. Open it from Search, or from its tile in the Glass skin.
 - **Crew**: everyone named in your entries, with how many logs each appears in.
 - **Map**: places from your entries as markers on a stylized chart.
-- **Skins**: ten looks, chosen in Settings under Appearance: Console, Classic, Vector, Pioneer, Flare, Daylight, Glass, Grid, Holo and Archive. Grid has four backdrops to choose from: Sunset, Room, Rings and Light-line. Glass has its own home screen, a grid of icon tiles, and its tint follows the Accent color setting (or turn on Clear glass for no tint). The choice is remembered.
+- **Computer layout**: on a computer (a window about 960 pixels wide or more) the app uses the whole window instead of a phone-shaped column. Menus run down the side (Glass keeps a dock at the bottom), lists and Settings spread into columns, and the home screen has a large writing field so you can start a log straight away (Ctrl or ⌘ + Enter saves it). Console has a framed panel layout with a large stardate and a striped 28-day bar; Command has a scan of the last 30 days, a time-since-last-entry box that turns red after 3 days, and dials for each log type. The window opens at 1280 × 860. Phones keep their layout.
+- **Arrange mode** (Glass, Flare, Daylight, Grid on a computer): press the four-squares button at the top right of the home screen, or Settings > Arrange the home screen. Drag a panel (Status, Recent logs, the writing field, Buttons) by its name to the top, left, middle or right, or use its arrows; ✕ hides a panel. Buttons line up vertically at the sides and in a row across the top. "Reset layout" puts everything back. Each computer remembers its own layout.
+- **Ship phrases**: with Ship terms on, buttons say *Make it so* (save), *Energize* (back up), *Engage* (done), *Belay that* (cancel), *Jettison* (delete) and so on; hover for the plain meaning.
+- **Spoken commands** (Settings, on by default): while dictating, finish with "make it so", "engage" or "punch it" to save the entry, "belay that" or "scratch that" to take back the last words, or "stand down" / "end transmission" to stop listening. Turn it off if those phrases come up in your writing.
+- **Dates** (Settings): show a stardate and the calendar date (Both), stardates only, or calendar dates only.
+- **Story mode** (Settings): for using the app to tell a story. Each entry's stardate is yours to set on the entry screen, logs are listed in stardate order, a new entry carries on 0.1 after the latest stardate, and calendar dates are hidden. The real date and time each entry was written is still kept behind the scenes (for backups and the activity graphs).
+- **Skins**: eleven looks, chosen in Settings under Appearance: Console, Classic, Vector, Pioneer, Flare, Daylight, Glass, Grid, Command, Holo and Archive. Grid has four backdrops to choose from: Sunset, Room, Rings and Light-line. Glass and Command have their own home screens (Glass: a grid of icon tiles; Command: a stats header and message-style log list). Glass's tint follows the Accent color setting (or turn on Clear glass for no tint). The choice is remembered.
 
-Entries are saved by the Rust backend to `entries.json` in the app's data folder, with recordings in an `audio` folder beside it (on a Mac: `~/Library/Application Support/com.dgmcint.shipslog/`).
+## Where everything is saved
+
+Entries are saved to `entries.json` in the app's data folder, with recordings in an `audio` folder and photos and video in a `media` folder beside it. Settings > "Where your log is kept" shows the exact folder.
+
+| System | Data folder |
+|---|---|
+| Mac | `~/Library/Application Support/com.dgmcint.shipslog/` |
+| Windows | `%APPDATA%\com.dgmcint.shipslog\` (C:\Users\<you>\AppData\Roaming\com.dgmcint.shipslog) |
+| Linux | `~/.local/share/com.dgmcint.shipslog/` |
+| iPhone, iPad | inside the app (backups appear in Files > Ship's Log > Backups) |
+| Android | inside the app |
+
+These are each system's standard, hidden places for app data, so the log can't be moved or deleted by accident. In Settings > "Where your log is kept":
+
+- **Show in Finder** (File Explorer on Windows) opens the folder.
+- **Move to Documents** copies the log to `Documents/Ships Log`, where it's easy to see, and the app uses it from then on (it restarts to switch). **Move back to the standard folder** reverses it. The old copy is left in place with a `MOVED.txt` note and can be deleted. If Documents is synced (iCloud Drive, OneDrive), the log is synced too; don't use the app on two computers with the same synced log at once. On a Mac, macOS may ask once whether Ship's Log can use Documents; choose Allow.
+
+### Portable mode
+
+If a folder named **`Ships Log Data`** sits right next to the app (next to `Ships Log.exe` on Windows, the `.AppImage` on Linux, or `Ship's Log.app` on a Mac), the app keeps everything in that folder instead, so the app and its log can travel together on a USB drive. Settings > Make portable copies your current log into that folder; the app then restarts to use it. The GitHub release includes a ready-made portable Windows zip. On a Mac, macOS may run an app from a download or disk image in a hidden temporary location; move it into its folder (or onto the drive) first so it finds `Ships Log Data`.
 
 ## Microphone permission
 
@@ -115,7 +140,7 @@ Putting the app on a real iPhone needs a free Apple ID signed into Xcode; the Ap
 
 Open Settings with the gear button on the Logs screen.
 
-- **Back up now** saves one `.zip` with every log, recording, photo, video and your settings. On a computer you choose where it goes; on a phone it is saved to the app's Documents folder (Files app > Ship's Log > Backups).
+- **Back up now** (*Energize*) saves one `.zip` with every log, recording, photo, video and your settings. On a computer you choose where it goes; on a phone it is saved to the app's Documents folder (Files app > Ship's Log > Backups).
 - **Restore from a backup** replaces the log on this device with the one in a backup file. The log it replaces is kept in a `before-restore` folder inside the app's data folder.
 - **Automatic backup** (computers): choose a folder and Daily, Weekly or Monthly. The 10 newest automatic backups are kept.
 - The Logs screen shows a reminder when the last backup is more than two weeks old.
@@ -129,6 +154,7 @@ Each system gets one file:
 | Mac | `Ship's Log_<version>_universal.dmg` | Open, drag to Applications. Works on Apple Silicon and Intel. |
 | Windows | `Ships Log_<version>_x64-setup.exe` | Run it. No administrator rights needed. |
 | Linux | `Ship's Log_<version>_amd64.AppImage` | `chmod +x` and run. Nothing to install. |
+| Windows, portable | `Ships-Log-<version>-windows-portable.zip` | Unzip anywhere (a USB drive works) and run `Ships Log.exe`. The log stays in the `Ships Log Data` folder beside it. |
 
 **Built by GitHub:** `.github/workflows/release.yml` builds all three. Push a version tag and GitHub attaches the files to a draft release:
 

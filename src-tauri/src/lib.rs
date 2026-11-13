@@ -544,13 +544,201 @@ fn run_auto_backup(app: AppHandle) {
     let _ = app;
 }
 
+/// Name of the folder that switches the app to portable mode when it sits beside the app.
+const PORTABLE_FOLDER: &str = "Ships Log Data";
+
+/// The folder the app itself sits in: beside the .exe (Windows), the .AppImage (Linux)
+/// or the .app (Mac). None on phones.
+fn app_home() -> Option<PathBuf> {
+    #[cfg(desktop)]
+    {
+        if let Some(img) = std::env::var_os("APPIMAGE") {
+            return PathBuf::from(img).parent().map(|p| p.to_path_buf());
+        }
+        let exe = std::env::current_exe().ok()?;
+        let dir = exe.parent()?.to_path_buf();
+        #[cfg(target_os = "macos")]
+        {
+            // Ship's Log.app/Contents/MacOS/ship-s-log → the folder holding Ship's Log.app
+            if dir.ends_with("Contents/MacOS") {
+                return dir.parent()?.parent()?.parent().map(|p| p.to_path_buf());
+            }
+        }
+        Some(dir)
+    }
+    #[cfg(mobile)]
+    {
+        None
+    }
+}
+
+/// Name of the data folder in Documents, when the person chooses to keep the log there.
+const DOCUMENTS_FOLDER: &str = "Ships Log";
+/// Small file in the standard app-data folder that points to a chosen data folder.
+const LOCATION_FILE: &str = "location.json";
+
+/// The standard app-data folder, or the folder chosen in Settings (Documents/Ships Log).
+fn default_data_dir(app: &tauri::App) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let standard = app.path().app_data_dir()?;
+    if let Some(chosen) = chosen_dir(&standard) {
+        return Ok(chosen);
+    }
+    Ok(standard)
+}
+
+fn chosen_dir(standard: &std::path::Path) -> Option<PathBuf> {
+    let text = fs::read_to_string(standard.join(LOCATION_FILE)).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let dir = PathBuf::from(v.get("dir")?.as_str()?);
+    // If the chosen folder has gone missing (a drive unplugged, a folder renamed), make it again
+    // rather than quietly using another folder: the log may come back when the folder does.
+    Some(dir)
+}
+
+fn portable_dir() -> Option<PathBuf> {
+    let d = app_home()?.join(PORTABLE_FOLDER);
+    d.is_dir().then_some(d)
+}
+
+#[derive(Serialize)]
+struct DataLocation {
+    path: String,
+    portable: bool,
+    portable_folder: String,
+    app_folder: Option<String>,
+    in_documents: bool,
+    documents_path: Option<String>,
+    standard_path: Option<String>,
+}
+
+fn documents_target(app: &AppHandle) -> Option<PathBuf> {
+    let docs = app.path().document_dir().or_else(|_| app.path().home_dir()).ok()?;
+    Some(docs.join(DOCUMENTS_FOLDER))
+}
+
+/// Where the log is kept, for the Settings screen.
+#[tauri::command]
+fn data_location(app: AppHandle, store: State<Store>) -> DataLocation {
+    let portable = portable_dir().map_or(false, |d| d == store.root);
+    let standard = app.path().app_data_dir().ok();
+    DataLocation {
+        path: store.root.display().to_string(),
+        portable,
+        portable_folder: PORTABLE_FOLDER.into(),
+        app_folder: app_home().map(|p| p.display().to_string()),
+        in_documents: !portable && standard.as_ref().map_or(false, |s| *s != store.root),
+        documents_path: documents_target(&app).map(|p| p.display().to_string()),
+        standard_path: standard.map(|p| p.display().to_string()),
+    }
+}
+
+/// Moves the log between the standard app-data folder and Documents/Ships Log.
+/// The log is copied (the old copy is left, with a note), and the app then restarts to use it.
+#[tauri::command]
+fn move_data(app: AppHandle, store: State<Store>, to_documents: bool) -> Result<String, String> {
+    let standard = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let target = if to_documents {
+        documents_target(&app).ok_or("Couldn't find the Documents folder.")?
+    } else {
+        standard.clone()
+    };
+    if target == store.root {
+        return Ok(target.display().to_string());
+    }
+    if to_documents && target.join("entries.json").exists() {
+        return Err(format!("{} already has a log in it. Move or rename that folder first.", target.display()));
+    }
+    {
+        let _guard = store.busy.lock().map_err(|e| e.to_string())?;
+        copy_dir(&store.root, &target).map_err(|e| format!("Couldn't copy the log to {}: {e}", target.display()))?;
+        let _ = fs::remove_file(target.join("MOVED.txt"));
+        if to_documents {
+            let _ = fs::remove_file(target.join(LOCATION_FILE));
+            fs::write(standard.join(LOCATION_FILE), serde_json::json!({ "dir": target }).to_string()).map_err(|e| e.to_string())?;
+        } else {
+            fs::remove_file(standard.join(LOCATION_FILE)).map_err(|e| e.to_string())?;
+        }
+        let _ = fs::write(
+            store.root.join("MOVED.txt"),
+            format!("Ship's Log now keeps its log in {}.\nThis folder is an older copy and can be deleted.\n", target.display()),
+        );
+    }
+    Ok(target.display().to_string())
+}
+
+#[tauri::command]
+fn restart_app(app: AppHandle) {
+    app.restart();
+}
+
+/// Opens the data folder in Finder, File Explorer or the Linux file manager.
+#[tauri::command]
+fn show_data_folder(store: State<Store>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let cmd = "open";
+    #[cfg(target_os = "windows")]
+    let cmd = "explorer";
+    #[cfg(all(desktop, not(any(target_os = "macos", target_os = "windows"))))]
+    let cmd = "xdg-open";
+    #[cfg(desktop)]
+    {
+        std::process::Command::new(cmd).arg(&store.root).spawn().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(mobile)]
+    {
+        let _ = store;
+        Err("Not available on phones.".into())
+    }
+}
+
+/// Makes the "Ships Log Data" folder beside the app and copies the current log into it.
+/// The app uses it from the next start.
+#[tauri::command]
+fn make_portable(store: State<Store>) -> Result<String, String> {
+    let home = app_home().ok_or("Portable mode is for computers.")?;
+    let dest = home.join(PORTABLE_FOLDER);
+    if dest == store.root {
+        return Ok(dest.display().to_string());
+    }
+    if dest.exists() && fs::read_dir(&dest).map_err(|e| e.to_string())?.next().is_some() {
+        return Err(format!("{} already has files in it.", dest.display()));
+    }
+    let _guard = store.busy.lock().map_err(|e| e.to_string())?;
+    copy_dir(&store.root, &dest).map_err(|e| format!("Couldn't copy the log to {}: {e}", dest.display()))?;
+    Ok(dest.display().to_string())
+}
+
+fn copy_dir(from: &std::path::Path, to: &std::path::Path) -> io::Result<()> {
+    fs::create_dir_all(to)?;
+    for item in fs::read_dir(from)? {
+        let item = item?;
+        let target = to.join(item.file_name());
+        if item.file_type()?.is_dir() {
+            if item.file_name() == "before-restore" {
+                continue;
+            }
+            copy_dir(&item.path(), &target)?;
+        } else {
+            fs::copy(item.path(), target)?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let dir = app.path().app_data_dir()?;
+            // Portable: a "Ships Log Data" folder beside the app keeps the log there instead.
+            let dir = match portable_dir() {
+                Some(d) => d,
+                None => default_data_dir(app)?,
+            };
             fs::create_dir_all(&dir)?;
+            // Photos and video are shown straight from disk, so the viewer must be allowed to read them there.
+            let _ = app.asset_protocol_scope().allow_directory(dir.join("media"), true);
             app.manage(Store::load(dir)?);
             // Check for a due automatic backup now and every hour.
             let handle = app.handle().clone();
@@ -576,7 +764,12 @@ pub fn run() {
             backup_status,
             backup_now,
             restore_backup,
-            set_auto_backup
+            set_auto_backup,
+            data_location,
+            make_portable,
+            move_data,
+            restart_app,
+            show_data_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running Ship's Log");
@@ -637,5 +830,31 @@ mod tests {
         let fine = dir.join("fine.mp4");
         make(&fine, "1280x720", &["-c:v", "libx264", "-c:a", "aac"]);
         assert_eq!(video::convert(&fine, &dir.join("fine-play.mp4")).unwrap(), None);
+    }
+}
+
+#[cfg(test)]
+mod location_tests {
+    use super::*;
+
+    #[test]
+    fn chosen_folder_and_copy() {
+        let base = std::env::temp_dir().join(format!("shipslog-loc-{}", std::process::id()));
+        let standard = base.join("standard");
+        let docs = base.join("Documents").join(DOCUMENTS_FOLDER);
+        fs::create_dir_all(standard.join("media")).unwrap();
+        fs::write(standard.join("entries.json"), "[]").unwrap();
+        fs::write(standard.join("media").join("a.jpg"), "x").unwrap();
+        fs::create_dir_all(standard.join("before-restore")).unwrap();
+        assert!(chosen_dir(&standard).is_none());
+
+        copy_dir(&standard, &docs).unwrap();
+        assert!(docs.join("entries.json").exists());
+        assert!(docs.join("media").join("a.jpg").exists());
+        assert!(!docs.join("before-restore").exists());
+
+        fs::write(standard.join(LOCATION_FILE), serde_json::json!({ "dir": docs }).to_string()).unwrap();
+        assert_eq!(chosen_dir(&standard), Some(docs.clone()));
+        fs::remove_dir_all(&base).unwrap();
     }
 }

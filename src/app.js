@@ -13,6 +13,7 @@ const SKINS = [
   ["daylight", "Daylight", "Bright bridge: white and blue with a light streak", ["#eaf2fb", "#0a63cc", "#0b5c7a"]],
   ["glass", "Glass", "Tinted glass tiles on a warm dark backdrop, with a tile home screen", ["#2a0f08", "#4fa3b8", "#bfeff0"]],
   ["grid", "Grid", "Neon grid worlds: Sunset, Room, Rings or Light-line", ["#0a0420", "#19e6ff", "#ff4fd8"]],
+  ["command", "Command", "Steel-blue glass panels, fine readouts and message-style log lists", ["#0d2236", "#8fd8ff", "#e9f6ff"]],
   ["holo", "Holo", "Modern projection: glowing cyan outlines", ["#04121c", "#2fd3e8", "#7fe7c4"]],
   ["archive", "Archive", "Library computer: navy with gold, steel blue and silver", ["#050d21", "#e8c46a", "#7fb0ff"]],
 ];
@@ -140,6 +141,11 @@ const api = tauri
       async mediaDir() { return tauri.invoke("media_dir"); },
       saveSettings: (settings) => tauri.invoke("save_settings", { settings }),
       backupStatus: () => tauri.invoke("backup_status"),
+      dataLocation: () => tauri.invoke("data_location"),
+      makePortable: () => tauri.invoke("make_portable"),
+      moveData: (toDocuments) => tauri.invoke("move_data", { toDocuments }),
+      restartApp: () => tauri.invoke("restart_app"),
+      showDataFolder: () => tauri.invoke("show_data_folder"),
       backupNow: () => tauri.invoke("backup_now"),
       restoreBackup: () => tauri.invoke("restore_backup"),
       setAutoBackup: (off, everyDays) => tauri.invoke("set_auto_backup", { off, everyDays }),
@@ -157,6 +163,11 @@ const api = tauri
       async mediaDir() { return ""; },
       // Browser preview: backups are a download of the journal text (no media).
       async saveSettings(s) { try { localStorage.setItem("shipslog.settings", s); } catch {} },
+      async dataLocation() { return { path: "this browser's storage (preview only)", portable: false, portable_folder: "Ships Log Data", app_folder: null }; },
+      async makePortable() { throw "Portable mode works in the installed app."; },
+      async moveData() { throw "Moving the log works in the installed app."; },
+      async restartApp() {},
+      async showDataFolder() {},
       async backupStatus() {
         const last = Number(localStorage.getItem("shipslog.lastBackup") || 0);
         return { lastBackup: last || null, autoFolder: null, autoEveryDays: 7 };
@@ -220,6 +231,38 @@ function stardate(d = new Date()) {
 const formatDate = (d) =>
   d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
 
+const sd1 = (n) => Number(n).toFixed(1);
+const showStardate = () => state.prefs.dateStyle !== "calendar";
+const showCalendar = () => state.prefs.dateStyle !== "stardate" && !state.prefs.storyMode;
+
+/** The stardate "now": today's, or in story mode where the story has got to (the latest stardate written). */
+function currentStardate() {
+  if (state.prefs.storyMode && state.entries.length) return Math.max(...state.entries.map((e) => e.stardate));
+  return stardate(new Date());
+}
+
+/** Stardate for a new entry: today's, or in story mode a step on from the latest one. */
+function nextStardate() {
+  if (state.prefs.storyMode && state.entries.length) return Math.round((currentStardate() + 0.1) * 10) / 10;
+  return stardate(new Date());
+}
+
+/** "Log date 80863.4 · Thu, Nov 12, 2026", following the Dates setting. */
+function dateLine(sd, date) {
+  const parts = [];
+  if (showStardate()) parts.push(`${T("Log date", "Stardate")} ${sd1(sd)}`);
+  if (showCalendar() && date) parts.push(formatDate(date));
+  return parts.join(" · ");
+}
+
+/** An entry's date as a short label for lists: its stardate, or its calendar date. */
+const entryDate = (e) => showStardate() ? sd1(e.stardate) : new Date(e.created).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+
+/** Logs in the order the Dates setting asks for: newest written first, or by stardate in story mode. */
+function inOrder(list) {
+  return state.prefs.storyMode ? [...list].sort((a, b) => b.stardate - a.stardate || b.created.localeCompare(a.created)) : list;
+}
+
 /** Tiny element builder: h("div", {class: "x", onclick: fn}, "text", child, [more]) */
 function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
@@ -259,6 +302,7 @@ const ICON = {
   photo: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 8"/>',
   video: '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  grid: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   save: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/>',
@@ -315,6 +359,7 @@ const state = {
   skin: "console",
   entries: [],
   draft: null,
+  pad: { title: "", body: "" }, // the log pad on computer home screens
   deleteArmed: false,
   query: "",
   queryType: "all",
@@ -331,7 +376,12 @@ const state = {
     glassClear: false, // Glass skin: clear tiles with no tint
     gridBackdrop: "sunset", // Grid skin: "sunset" | "room" | "rings" | "lightline"
     shipTerms: true,   // ship names (Bridge, Engineering…) in place of plain labels
+    voiceCommands: true, // "Make it so", "Belay that"… while dictating
+    dateStyle: "both", // "both", "stardate" (stardates only) or "calendar" (calendar dates only)
+    storyMode: false,  // stardates are set by the writer, for telling a story; logs listed in stardate order
+    layout: null,      // computer home screen panels (Glass, Flare, Daylight, Grid); null = default
   },
+  arranging: false,    // arrange mode on the computer home screen
 };
 
 try {
@@ -346,13 +396,14 @@ const screenEl = document.getElementById("screen");
 const appEl = document.querySelector(".app");
 
 function go(screen) {
+  if (screen !== "logs") state.arranging = false;
   state.screen = screen;
   render();
   screenEl.scrollTop = 0;
 }
 
 async function refresh() {
-  state.entries = await api.list();
+  state.entries = inOrder(await api.list());
 }
 
 /** Picks dark or white text for a background color, whichever reads better. */
@@ -386,6 +437,7 @@ function applyLook() {
 
 function setPref(key, value) {
   state.prefs[key] = value;
+  if (key === "storyMode") state.entries = value ? inOrder(state.entries) : [...state.entries].sort((a, b) => b.created.localeCompare(a.created));
   try { localStorage.setItem("shipslog.prefs", JSON.stringify(state.prefs)); } catch {}
   persistSettings();
   render();
@@ -432,6 +484,7 @@ document.querySelectorAll(".nav [data-go]").forEach((b) => {
     else b.removeAttribute("aria-current");
   });
   const view = { cover: CoverScreen, logs: LogsScreen, compose: ComposeScreen, search: SearchScreen, crew: CrewScreen, map: MapScreen, settings: SettingsScreen, gallery: GalleryScreen, onthisday: OnThisDayScreen }[state.screen];
+  screenEl.dataset.screen = state.screen;
   screenEl.replaceChildren(...[view()].flat(Infinity).filter(Boolean));
   fitCoverTitle();
   addPlainTips();
@@ -506,7 +559,7 @@ function EntryCard(e, q) {
         (e.recordings || []).length
           ? h("span", { class: "row", style: { gap: "2px" }, "aria-label": `${e.recordings.length} recordings` }, svg(ICON.mic), e.recordings.length)
           : null,
-        e.stardate.toFixed(1))
+        entryDate(e))
     ),
     h("h3", { class: "h3" }, highlight(e.title || "Untitled", q)),
     h("p", {}, highlight(snippet(e), q)),
@@ -676,8 +729,8 @@ function CoverScreen() {
           state.editingShip = false;
           render();
         },
-      }, "Save details"),
-      h("button", { type: "button", class: "small-btn", onclick: () => { state.editingShip = false; render(); } }, "Cancel")
+      }, T("Save details", "Make it so")),
+      h("button", { type: "button", class: "small-btn", onclick: () => { state.editingShip = false; render(); } }, T("Cancel", "Belay that"))
     );
   }
 
@@ -756,6 +809,39 @@ function GalleryScreen() {
 }
 
 /** The Glass skin's home: a widget, a grid of icon tiles, and the latest logs. */
+/** Computer home screens: a writing field right on the home screen. */
+function LogPad(extra = "") {
+  const p = state.pad;
+  const now = new Date();
+  const carry = (opts) => openCompose(null, { ...opts, title: p.title, body: p.body });
+  async function savePad() {
+    if (!p.title.trim() && !p.body.trim()) { document.getElementById("pad-body").focus(); return; }
+    const t = new Date();
+    await api.save({ id: "", created: t.toISOString(), stardate: nextStardate(), logType: "personal", condition: "calm",
+      title: p.title.trim(), body: p.body, crew: [], place: "", locked: false, recordings: [], media: [] });
+    state.pad = { title: "", body: "" };
+    await refresh();
+    render();
+  }
+  const btn = (icon, label, plain, fn, cls = "") =>
+    h("button", { type: "button", class: "pad-btn " + cls, title: plain, onclick: fn }, svg(icon), h("span", {}, label));
+  return h("section", { class: "pad " + extra },
+    h("div", { class: "pad-head" },
+      h("span", { class: "pad-label" }, T("New entry", "Captain's log")),
+      h("span", { class: "pad-date" }, dateLine(nextStardate(), now))),
+    h("input", { class: "pad-title", placeholder: "Title (optional)", value: p.title, "aria-label": "Title", oninput: (e) => { p.title = e.target.value; } }),
+    h("textarea", { id: "pad-body", class: "pad-body", placeholder: "Begin your log entry…", value: p.body, "aria-label": "Log entry", style: { color: state.textColor || null },
+      oninput: (e) => { p.body = e.target.value; },
+      onkeydown: (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); savePad(); } } }),
+    h("div", { class: "pad-actions" },
+      btn(ICON.mic, "Dictate", "Dictate into this entry", () => carry({ dictate: true }), "go"),
+      btn(ICON.wave, "Record", "Add an audio recording", () => carry({ record: true })),
+      btn(ICON.photo, "More", "Log type, condition, crew, place, photos and video", () => carry({})),
+      h("span", { class: "pad-space" }),
+      btn(ICON.save, T("Save", "Make it so"), "Save this entry (Ctrl or ⌘ + Enter)", savePad, "save"))
+  );
+}
+
 function TileHome() {
   const latest = state.entries[0];
   const now = new Date();
@@ -765,18 +851,16 @@ function TileHome() {
     h("button", { type: "button", class: "app-tile", title: plain, onclick: fn },
       h("span", { class: "app-icon" }, svg(icon), badge ? h("span", { class: "app-badge" }, badge) : null),
       h("span", { class: "app-name" }, label));
-  return [
-    h("section", { class: "widget" },
+  const widget = () => h("section", { class: "widget" },
       h("div", { class: "row" },
         h("div", { class: "stack", style: { gap: "0" } },
           h("h1", { class: "widget-title" }, T("Ship's Log", "Bridge")),
-          h("span", { class: "widget-big", title: formatDate(now) }, stardate(now).toFixed(1))),
+          h("span", { class: "widget-big", title: showCalendar() ? formatDate(now) : null }, showStardate() ? sd1(currentStardate()) : now.toLocaleDateString(undefined, { month: "short", day: "numeric" }))),
         h("span", { class: "chip", title: conditionTag(cond), style: { "--c": condition(cond)[2] } }, conditionTag(cond))
       ),
-      state.prefs.readout ? ReadoutStrip() : h("div", { class: "muted" }, formatDate(now))
-    ),
-    BackupReminder(),
-    h("div", { class: "app-grid" },
+      state.prefs.readout ? ReadoutStrip() : h("div", { class: "muted" }, showCalendar() ? formatDate(now) : "")
+    );
+  const tiles = () => h("div", { class: "app-grid" },
       tile(ICON.mic, "Dictate", "Dictate a log", () => openCompose(null, { dictate: true })),
       tile(ICON.wave, "Record", "Record audio", () => openCompose(null, { record: true })),
       tile(ICON.pen, "Write", "Write an entry", () => openCompose(null)),
@@ -785,7 +869,8 @@ function TileHome() {
       tile(ICON.clock, "On this date", "Logs from this date in past years", () => go("onthisday"), past || null),
       tile(ICON.save, T("Backup", "Transporter"), "Backup and restore", () => go("settings")),
       tile(ICON.gear, T("Settings", "Engineering"), "Settings", () => go("settings"))
-    ),
+    );
+  const recent = () => [
     h("div", { class: "row" },
       h("h2", { class: "h2" }, "Recent logs"),
       h("span", { class: "muted" }, `${state.entries.length} on file`)
@@ -794,10 +879,359 @@ function TileHome() {
       ? h("div", { class: "list" }, state.entries.map((e) => EntryCard(e)))
       : h("div", { class: "empty" }, "No logs on file yet. Tap Dictate or Write to make your first entry."),
   ];
+  if (WIDE.matches) return PanelHome({ status: widget, logs: recent, pad: () => LogPad(state.skin === "glass" ? "glass-pad" : ""), buttons: tiles });
+  return [widget(), BackupReminder(), tiles(), recent()];
+}
+
+// ---------- Movable panels (computer home screen for Glass, Flare, Daylight and Grid) ----------
+
+const PANEL_SKINS = ["glass", "flare", "daylight", "grid"];
+const SLOTS = ["top", "left", "middle", "right"];
+const PANEL_IDS = ["status", "logs", "pad", "buttons"];
+const DEFAULT_LAYOUT = { top: ["status"], left: ["logs"], middle: ["pad"], right: ["buttons"], hidden: [] };
+const panelName = (id) => ({ status: T("Status", "Ship's status"), logs: "Recent logs", pad: T("New entry", "Captain's log"), buttons: "Buttons" })[id];
+
+/** The saved layout, repaired so every panel appears exactly once. */
+function getLayout() {
+  const saved = state.prefs.layout || DEFAULT_LAYOUT;
+  const out = { top: [], left: [], middle: [], right: [], hidden: [] };
+  const seen = new Set();
+  for (const k of [...SLOTS, "hidden"]) for (const id of saved[k] || []) {
+    if (PANEL_IDS.includes(id) && !seen.has(id)) { out[k].push(id); seen.add(id); }
+  }
+  for (const id of PANEL_IDS) if (!seen.has(id)) out[Object.keys(DEFAULT_LAYOUT).find((k) => DEFAULT_LAYOUT[k].includes(id))].push(id);
+  return out;
+}
+
+function movePanel(id, to, before) {
+  const L = getLayout();
+  for (const k of Object.keys(L)) L[k] = L[k].filter((x) => x !== id);
+  const list = L[to];
+  const i = before ? list.indexOf(before) : -1;
+  if (i >= 0) list.splice(i, 0, id); else list.push(id);
+  setPref("layout", L);
+}
+
+function PanelHome(build) {
+  const L = getLayout();
+  const on = state.arranging;
+  const arrows = [["top", "↑", "Move to the top"], ["left", "←", "Move to the left"], ["middle", "●", "Move to the middle"], ["right", "→", "Move to the right"]];
+  const panel = (id, slot) => h("div", { class: "ph-panel", "data-panel": id },
+    on ? h("div", { class: "ph-tab" },
+      h("span", { class: "ph-grip", title: "Drag to move", onpointerdown: (ev) => startPanelDrag(ev, id) }, "⠿ ", panelName(id)),
+      arrows.filter(([k]) => k !== slot).map(([k, sym, tip]) => h("button", { type: "button", class: "ph-arrow", title: tip, "aria-label": `${tip}: ${panelName(id)}`, onclick: () => movePanel(id, k) }, sym)),
+      h("button", { type: "button", class: "ph-arrow", title: "Hide this panel", "aria-label": `Hide ${panelName(id)}`, onclick: () => movePanel(id, "hidden") }, "✕")) : null,
+    build[id]());
+  const slot = (name) => {
+    const ids = L[name];
+    if (!ids.length && !on) return null;
+    const onlyButtons = ids.length === 1 && ids[0] === "buttons";
+    return h("div", { class: `ph-slot ph-${name}${onlyButtons ? " narrow" : ""}`, "data-slot": name },
+      ids.map((id) => panel(id, name)),
+      on && !ids.length ? h("div", { class: "ph-drop" }, "Drop a panel here") : null);
+  };
+  const middleEmpty = !L.middle.length && !on;
+  return h("div", { class: "ph" + (on ? " arranging" : "") + (middleEmpty ? " no-middle" : "") },
+    on ? h("div", { class: "ph-bar" },
+      h("span", { class: "ph-bar-title" }, "Arrange the home screen: drag a panel by its name, or use the arrows."),
+      L.hidden.map((id) => h("button", { type: "button", class: "small-btn", title: "Show this panel again", onclick: () => movePanel(id, "middle") }, svg(ICON.plus), panelName(id))),
+      h("span", { class: "ph-space" }),
+      h("button", { type: "button", class: "small-btn", onclick: () => setPref("layout", null) }, "Reset layout"),
+      h("button", { type: "button", class: "small-btn filled", title: "Done", onclick: () => { state.arranging = false; render(); } }, T("Done", "Engage")))
+      : h("button", { type: "button", class: "small-btn icon-btn ph-open", title: "Arrange the home screen", "aria-label": "Arrange the home screen", onclick: () => { state.arranging = true; render(); } }, svg(ICON.grid)),
+    BackupReminder(),
+    slot("top"),
+    h("div", { class: "ph-row" }, slot("left"), slot("middle"), slot("right")));
+}
+
+/** Drags a panel with the mouse or a finger; it lands in the slot (and before the panel) under the pointer. */
+function startPanelDrag(ev, id) {
+  ev.preventDefault();
+  const ghost = h("div", { class: "ph-ghost" }, "⠿ " + panelName(id));
+  document.body.append(ghost);
+  let target = null;
+  const place = (x, y) => {
+    ghost.style.left = x + 12 + "px"; ghost.style.top = y + 12 + "px";
+    document.querySelectorAll(".ph-slot.over").forEach((el) => el.classList.remove("over"));
+    const under = document.elementFromPoint(x, y);
+    const slotEl = under && under.closest(".ph-slot");
+    const before = under && under.closest(".ph-panel");
+    target = slotEl ? [slotEl.dataset.slot, before && before.dataset.panel !== id ? before.dataset.panel : null] : null;
+    if (slotEl) slotEl.classList.add("over");
+  };
+  place(ev.clientX, ev.clientY);
+  const move = (e) => place(e.clientX, e.clientY);
+  const up = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    ghost.remove();
+    if (target) movePanel(id, target[0], target[1]);
+    else render();
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+}
+
+/** "//TODAY 8:15 PM", "//YESTERDAY 9:02 AM" or "//NOV 07 6:40 PM". */
+function stamp(iso) {
+  const d = new Date(iso), now = new Date();
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(now) - day(d)) / 86400000);
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }).toUpperCase();
+  const when = diff === 0 ? "TODAY" : diff === 1 ? "YESTERDAY" : d.toLocaleDateString(undefined, { month: "short", day: "2-digit" }).toUpperCase();
+  return `//${when} ${time}`;
+}
+
+function RowCard(e) {
+  const [, , color] = condition(e.condition);
+  return h("button", { type: "button", class: "msg-row", onclick: () => openCompose(e) },
+    h("span", { class: "msg-arrow", "aria-hidden": "true" }, "\u25B6"),
+    h("span", { class: "msg-type" }, typeLabel(e.logType).toUpperCase()),
+    h("span", { class: "msg-when" }, showCalendar() ? stamp(e.created) : `SD ${sd1(e.stardate)}`),
+    h("span", { class: "msg-flag", style: { background: color }, title: condition(e.condition)[1] }),
+    h("span", { class: "msg-title" }, e.title || "Untitled")
+  );
+}
+
+function CommandHome() {
+  const now = new Date();
+  const days = weekActivity();
+  const logs = days.reduce((t, d) => t + d.logs, 0);
+  const words = days.reduce((t, d) => t + d.words, 0);
+  const active = days.filter((d) => d.logs).length;
+  const maxW = Math.max(1, ...days.map((d) => d.words));
+  const ship = state.ship;
+  const latest = state.entries[0];
+  const stat = (label, value, sub) => h("div", { class: "cmd-stat" },
+    h("span", { class: "cmd-stat-label" }, label), h("span", { class: "cmd-stat-num" }, value), h("span", { class: "cmd-stat-sub" }, sub));
+  const bars = days.map((d) => h("span", { class: "cmd-bar" + (d.logs ? "" : " off"), style: { height: (8 + (d.words / maxW) * 72) + "px" } }));
+  return [
+    h("section", { class: "cmd-panel cmd-head" },
+      h("div", { class: "stack", style: { gap: "2px", "min-width": "0" } },
+        h("span", { class: "cmd-fine" }, `PERSONAL RECORDS // ${(ship.registry || "NX-0000").toUpperCase()}`),
+        h("span", { class: "cmd-fine" }, dateLine(currentStardate(), now).toUpperCase()),
+        h("span", { class: "cmd-name" }, (ship.captain ? "CAPT. " + ship.captain : "CAPTAIN").toUpperCase()),
+        h("span", { class: "cmd-fine" }, `${(ship.ship || "SHIP").toUpperCase()} // ${conditionTag(latest ? latest.condition : "calm").toUpperCase()}`)
+      ),
+      h("div", { class: "cmd-stats" }, stat("LOGS", logs, "7 DAYS"), stat("DAYS", `${active}/7`, "ACTIVE"), stat("WORDS", words, "7 DAYS"))
+    ),
+    BackupReminder(),
+    h("div", { class: "row" },
+      h("h1", { class: "cmd-title" }, T("Ship's Log", "Captain's Log")),
+      h("button", { type: "button", class: "small-btn icon-btn", "aria-label": "Settings and backup", title: "Settings", onclick: () => go("settings") }, svg(ICON.gear))
+    ),
+    h("div", { class: "cmd-sub" },
+      h("span", {}, `LOG FILE (${state.entries.length} ENTRIES / ${logs} THIS WEEK)`),
+      h("span", { class: "cmd-segs", "aria-hidden": "true" }, days.map((d) => h("span", { class: d.logs ? "on" : "" })))
+    ),
+    h("div", { class: "cmd-actions" },
+      h("button", { type: "button", class: "cmd-btn primary-cmd", title: "Dictate a log", onclick: () => openCompose(null, { dictate: true }) }, svg(ICON.mic), h("span", {}, "DICTATE")),
+      h("button", { type: "button", class: "cmd-btn", title: "Record audio", onclick: () => openCompose(null, { record: true }) }, svg(ICON.wave), h("span", {}, "RECORD")),
+      h("button", { type: "button", class: "cmd-btn", title: "Write an entry", onclick: () => openCompose(null) }, svg(ICON.pen), h("span", {}, "WRITE"))
+    ),
+    state.entries.length
+      ? h("section", { class: "cmd-panel cmd-list" }, state.entries.map(RowCard))
+      : h("div", { class: "empty" }, "No logs on file yet. Tap Dictate or Write to make your first entry."),
+    state.prefs.readout ? h("section", { class: "cmd-panel cmd-chart" },
+      h("div", { class: "row" }, h("span", { class: "cmd-fine" }, "ACTIVITY // WORDS PER DAY"), h("span", { class: "cmd-fine" }, "7 DAYS")),
+      h("div", { class: "cmd-bars" }, bars),
+      h("div", { class: "cmd-dots", "aria-hidden": "true" }, Array.from({ length: 22 }, (_, i) => h("span", { class: i < 3 ? "big" : i % 5 === 0 ? "lit" : "" })))
+    ) : null,
+  ];
+}
+
+// ---------- Wide screens (computers) ----------
+const WIDE = window.matchMedia("(min-width: 960px)");
+WIDE.addEventListener("change", () => render());
+
+/** Counts logs and words for each of the last n days, oldest first. */
+function dayActivity(n) {
+  const days = [];
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  for (let i = n - 1; i >= 0; i--) { const d = new Date(today); d.setDate(today.getDate() - i); days.push({ date: d, logs: 0, words: 0 }); }
+  for (const e of state.entries) {
+    const d = new Date(e.created); d.setHours(0, 0, 0, 0);
+    const slot = days.find((x) => x.date.getTime() === d.getTime());
+    if (slot) { slot.logs += 1; slot.words += (e.body.trim().match(/\S+/g) || []).length; }
+  }
+  return days;
+}
+const wordCount = (e) => (e.body.trim().match(/\S+/g) || []).length;
+const pad = (n) => String(n).padStart(2, "0");
+
+/** "-02:14:07" since the newest log, or "-3D 02:14" after a day. */
+function sinceText(iso) {
+  if (!iso) return "--:--:--";
+  let s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  const d = Math.floor(s / 86400); s %= 86400;
+  const hh = Math.floor(s / 3600), mm = Math.floor((s % 3600) / 60), ss = s % 60;
+  return d ? `-${d}D ${pad(hh)}:${pad(mm)}` : `-${pad(hh)}:${pad(mm)}:${pad(ss)}`;
+}
+setInterval(() => { const el = document.getElementById("since-last"); if (el && state.entries[0]) el.textContent = sinceText(state.entries[0].created); }, 1000);
+
+/** Radar of the last 30 days: each log is a dot (closer = newer), the newest five get callout labels. */
+function LogScan(list) {
+  const cx = 210, cy = 205, R = 180, now = Date.now();
+  const typeIdx = (t) => Math.max(0, LOG_TYPES.findIndex(([k]) => k === t));
+  const recent = list.filter((e) => now - new Date(e.created) < 30 * 86400000);
+  const place = (e, i) => {
+    const age = (now - new Date(e.created)) / 86400000;
+    const r = 26 + (age / 30) * (R - 30);
+    let hsh = 0; for (const ch of e.id) hsh = (hsh * 31 + ch.charCodeAt(0)) >>> 0;
+    const a = ((typeIdx(e.logType) * 72 + (hsh % 50) - 25) - 90) * Math.PI / 180;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  };
+  const rings = [36, 72, 108, 144, 180].map((r) => `<circle cx="${cx}" cy="${cy}" r="${r}" class="sc-ring"/>`).join("");
+  const ticks = Array.from({ length: 72 }, (_, i) => { const a = i * 5 * Math.PI / 180, r1 = R + 4, r2 = R + (i % 6 ? 9 : 16);
+    return `<path d="M${(cx + r1 * Math.cos(a)).toFixed(1)} ${(cy + r1 * Math.sin(a)).toFixed(1)}L${(cx + r2 * Math.cos(a)).toFixed(1)} ${(cy + r2 * Math.sin(a)).toFixed(1)}"/>`; }).join("");
+  const sectors = LOG_TYPES.map(([k], i) => { const a = (i * 72 - 90) * Math.PI / 180, x = cx + (R + 28) * Math.cos(a), y = cy + (R + 28) * Math.sin(a) + 4;
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="middle" class="sc-sector">${typeLabel(k).split(" ")[0].toUpperCase()}</text>`; }).join("");
+  const dots = recent.map((e, i) => { const [x, y] = place(e, i);
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${i === 0 ? 5 : 3.5}" class="sc-dot ${e.condition}"/>${i === 0 ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="13" class="sc-target"/><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="21" class="sc-target2"/>` : ""}`; }).join("");
+  const esc = (t) => t.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+  const calls = recent.slice(0, 5).map((e, i) => { const [x, y] = place(e, i), ly = 54 + i * 38, lx = 450;
+    return `<path d="M${x.toFixed(1)} ${y.toFixed(1)}L${lx - 26} ${ly}H${lx - 6}" class="sc-call"/><rect x="${lx}" y="${ly - 13}" width="176" height="24" rx="12" class="sc-chip"/>
+      <text x="${lx + 12}" y="${ly + 4}" class="sc-label">${esc((e.title || "Untitled").slice(0, 22))}</text>`; }).join("");
+  return svgEl("0 0 640 420", "scan",
+    `<g class="sc-grid">${Array.from({ length: 17 }, (_, i) => `<path d="M${i * 40} 0V420"/>`).join("")}${Array.from({ length: 11 }, (_, i) => `<path d="M0 ${i * 40}H640"/>`).join("")}</g>
+     ${rings}<g class="sc-ticks">${ticks}</g>
+     <path d="M${cx - R - 20} ${cy}H${cx + R + 20}M${cx} ${cy - R - 20}V${cy + R + 20}" class="sc-cross"/>
+     <g class="sc-sweep"><path d="M${cx} ${cy}L${cx} ${cy - R}A${R} ${R} 0 0 1 ${(cx + R * Math.sin(Math.PI / 5)).toFixed(1)} ${(cy - R * Math.cos(Math.PI / 5)).toFixed(1)}Z"/></g>
+     ${sectors}${calls}${dots}<circle cx="${cx}" cy="${cy}" r="4" class="sc-center"/>`,
+    `Scan of the last 30 days: ${recent.length} logs`);
+}
+
+/** Small donut per log type: its share of all logs. */
+function TypeGauges() {
+  const total = Math.max(1, state.entries.length);
+  return h("div", { class: "gauges" }, LOG_TYPES.map(([k]) => {
+    const n = state.entries.filter((e) => e.logType === k).length, pct = Math.round((n / total) * 100), C = 2 * Math.PI * 15;
+    return h("div", { class: "gauge", title: `${typePlain(k)}: ${n}` },
+      svgEl("0 0 40 40", "gauge-ring", `<circle cx="20" cy="20" r="15" class="g-track"/><circle cx="20" cy="20" r="15" class="g-fill" stroke-dasharray="${(pct / 100 * C).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 20 20)"/><text x="20" y="24" text-anchor="middle" class="g-num">${n}</text>`),
+      h("span", { class: "gauge-label" }, typeLabel(k).split(" ")[0]));
+  }));
+}
+
+function CommandConsole() {
+  const now = new Date();
+  const ship = state.ship;
+  const latest = state.entries[0];
+  const filter = state.cmdFilter || "all";
+  const list = state.entries.filter((e) => filter === "all" || e.logType === filter);
+  const week = dayActivity(7), month = dayActivity(28);
+  const wk = { logs: week.reduce((t, d) => t + d.logs, 0), words: week.reduce((t, d) => t + d.words, 0), days: week.filter((d) => d.logs).length };
+  const allWords = state.entries.reduce((t, e) => t + wordCount(e), 0);
+  const overdue = latest && Date.now() - new Date(latest.created) > 3 * 86400000;
+  const maxW = Math.max(1, ...month.map((d) => d.words));
+  const big = (label, value, sub) => h("div", { class: "cc-big" }, h("span", { class: "cc-big-label" }, label), h("span", { class: "cc-big-num" }, value), sub ? h("span", { class: "cmd-fine" }, sub) : null);
+  const tabs = [["all", "ALL"], ...LOG_TYPES.map(([k]) => [k, typeLabel(k).split(" ")[0].toUpperCase()])];
+  return h("div", { class: "console" },
+    h("section", { class: "cc-head" },
+      h("div", { class: "cc-tab left" }, h("span", { class: "cmd-fine" }, `SYS ${(ship.registry || "NX-0000").toUpperCase()}`), h("span", { class: "cc-tab-num" }, showStardate() ? sd1(currentStardate()) : now.toLocaleDateString(undefined, { month: "short", day: "numeric" }))),
+      h("div", { class: "cc-title-block" },
+        h("span", { class: "cmd-fine" }, `PERSONAL RECORDS // ${(ship.ship || "SHIP").toUpperCase()} // ${(ship.captain ? "CAPT. " + ship.captain : "CAPTAIN").toUpperCase()}`),
+        h("h1", { class: "cmd-title" }, T("Ship's Log", "Captain's Log"))),
+      h("div", { class: "cc-chs", role: "group", "aria-label": "Filter by type" }, tabs.map(([k, name], i) =>
+        h("button", { type: "button", class: "cc-ch", "aria-pressed": String(filter === k), onclick: () => { state.cmdFilter = k; render(); } }, h("span", { class: "cc-ch-n" }, "CH " + pad(i + 1)), name))),
+      h("button", { type: "button", class: "small-btn icon-btn", "aria-label": "Settings", title: "Settings", onclick: () => go("settings") }, svg(ICON.gear)),
+      h("div", { class: "cc-tab right" }, h("span", { class: "cmd-fine" }, "LOG FILE"), h("span", { class: "cc-tab-num" }, String(state.entries.length).padStart(4, "0")))
+    ),
+    h("aside", { class: "cc-left" },
+      h("section", { class: "cmd-panel cc-alert" + (overdue ? " red" : "") },
+        h("span", { class: "cc-alert-head" }, overdue ? "LOG OVERDUE :" : "LAST ENTRY :"),
+        h("span", { id: "since-last", class: "cc-alert-num" }, sinceText(latest && latest.created)),
+        h("span", { class: "cmd-fine" }, latest ? (latest.title || "Untitled").toUpperCase() : "NO LOGS ON FILE")),
+      h("section", { class: "cmd-panel" },
+        h("span", { class: "cmd-fine" }, T("LAST 7 DAYS", "SHIP'S STATUS // 7 DAYS")),
+        h("div", { class: "cc-bigs" }, big("LOGS", wk.logs), big("DAYS", `${wk.days}/7`), big("WORDS", wk.words))),
+      h("section", { class: "cmd-panel" }, h("span", { class: "cmd-fine" }, "LOG TYPES // ALL TIME"), TypeGauges()),
+      h("div", { class: "cc-actions" },
+        h("button", { type: "button", class: "cmd-btn primary-cmd", title: "Dictate a log", onclick: () => openCompose(null, { dictate: true }) }, svg(ICON.mic), h("span", {}, "DICTATE")),
+        h("button", { type: "button", class: "cmd-btn", title: "Record audio", onclick: () => openCompose(null, { record: true }) }, svg(ICON.wave), h("span", {}, "RECORD")),
+        h("button", { type: "button", class: "cmd-btn", title: "Write an entry", onclick: () => openCompose(null) }, svg(ICON.pen), h("span", {}, "WRITE")))
+    ),
+    h("div", { class: "cc-center" }, LogPad("cmd-panel cmd-pad"), h("section", { class: "cmd-panel cc-scanbox" },
+      h("div", { class: "row" }, h("span", { class: "cmd-fine" }, "SCANNING LOG FILE // LAST 30 DAYS"), h("span", { class: "cmd-fine" }, `${list.length} RECORDS`)),
+      LogScan(list),
+      h("div", { class: "cc-scan-foot" },
+        latest ? h("div", { class: "cc-scan-text" },
+          h("span", { class: "cc-scan-h" }, "LATEST ENTRY :"),
+          h("span", {}, `TITLE: ${(latest.title || "Untitled").toUpperCase()}`),
+          h("span", {}, `TYPE: ${typeLabel(latest.logType).toUpperCase()}`),
+          h("span", {}, `STATUS: ${conditionTag(latest.condition).toUpperCase()}`),
+          h("span", {}, `PLACE: ${(latest.place || "UNKNOWN").toUpperCase()}`)) : h("span"),
+        big("WORDS ON FILE", allWords.toLocaleString(), `${state.entries.length} ENTRIES`))
+    )),
+    h("aside", { class: "cmd-panel cc-right" },
+      h("div", { class: "row" }, h("span", { class: "cmd-fine" }, `LOG FILE (${list.length} ENTRIES / ${wk.logs} THIS WEEK)`)),
+      list.length ? h("div", { class: "cmd-list cc-list" }, list.map(RowCard)) : h("div", { class: "empty" }, "No logs here yet.")),
+    state.prefs.readout ? h("section", { class: "cmd-panel cc-foot" },
+      h("div", { class: "row" }, h("span", { class: "cmd-fine" }, "ACTIVITY // WORDS PER DAY // 28 DAYS"), h("span", { class: "cmd-fine" }, `${month.filter((d) => d.logs).length} ACTIVE DAYS`)),
+      h("div", { class: "cc-bars" }, month.map((d) => h("span", { class: "cmd-bar" + (d.logs ? "" : " off"), title: `${d.date.toLocaleDateString()}: ${d.words} words`, style: { height: (6 + (d.words / maxW) * 64) + "px" } }))),
+      h("div", { class: "cmd-dots" }, month.map((d, i) => h("span", { class: i === month.length - 1 ? "big" : d.logs ? "lit" : "" })))) : null
+  );
+}
+
+/** Console skin on a computer: elbow-framed panel with number blocks and a striped log bar. */
+function ConsoleWide() {
+  const now = new Date();
+  const month = dayActivity(28);
+  const typeColor2 = { personal: "var(--accent)", engineering: "var(--orange)", medical: "var(--accent2)", science: "#9fb6ff", away: "#e9b9ff" };
+  const counts = LOG_TYPES.map(([k]) => [k, state.entries.filter((e) => e.logType === k).length]);
+  const num = (n, w = 4) => String(n).padStart(w, "0");
+  const words = state.entries.reduce((t, e) => t + wordCount(e), 0);
+  const stripes = [];
+  for (const d of month) {
+    const day = state.entries.filter((e) => { const x = new Date(e.created); x.setHours(0, 0, 0, 0); return x.getTime() === d.date.getTime(); });
+    if (!day.length) stripes.push(h("span", { class: "lw-stripe gap" }));
+    for (const e of day) stripes.push(h("span", { class: "lw-stripe", title: e.title, style: { background: typeColor2[e.logType] || "var(--accent)", flex: String(1 + Math.min(4, wordCount(e) / 40)) } }));
+  }
+  return h("div", { class: "lw" },
+    h("div", { class: "lw-top" },
+      h("div", { class: "lw-elbow top" }),
+      h("div", { class: "lw-topbar" },
+        h("span", { class: "lw-blk a" }, num(state.entries.length)), h("span", { class: "lw-blk b" }, num(words, 5)), h("span", { class: "lw-fill" }),
+        h("h1", { class: "lw-title" }, T("Ship's Log", "Bridge")), h("span", { class: "lw-cap" }))
+    ),
+    h("div", { class: "lw-body" },
+      h("div", { class: "lw-rail" },
+        counts.map(([k, n]) => h("button", { type: "button", class: "lw-seg", style: { background: typeColor2[k] }, onclick: () => { state.query = ""; state.queryType = k; go("search"); } },
+          h("span", {}, typeLabel(k)), h("b", {}, num(n, 3)))),
+        h("span", { class: "lw-seg tall" })
+      ),
+      h("section", { class: "lw-file" },
+        LogPad("lw-pad"),
+        h("div", { class: "lw-file-head" }, h("span", {}, "FILE = " + T("SHIP'S LOG", "CAPTAIN'S LOG")), h("span", {}, "ENTRY BY " + (state.ship.captain ? state.ship.captain : "CAPTAIN").toUpperCase())),
+        state.entries.length ? state.entries.map((e) => h("button", { type: "button", class: "lw-row", onclick: () => openCompose(e) },
+          h("span", { class: "lw-dot", style: { background: condition(e.condition)[2] } }),
+          h("span", { class: "lw-n" }, entryDate(e)),
+          h("span", { class: "lw-n" }, num(wordCount(e), 4)),
+          h("span", { class: "lw-type", style: { color: typeColor2[e.logType] } }, typeLabel(e.logType)),
+          h("span", { class: "lw-t" }, e.title || "Untitled"))) : h("div", { class: "empty" }, "No logs on file yet.")
+      ),
+      h("section", { class: "lw-side" },
+        h("span", { class: "lw-label" }, T("Log date", "Stardate")),
+        h("span", { class: "lw-date" }, showStardate() ? sd1(currentStardate()) : now.toLocaleDateString(undefined, { month: "short", day: "numeric" })),
+        showCalendar() ? h("span", { class: "lw-label small" }, formatDate(now)) : null,
+        state.prefs.readout ? h("div", { class: "lw-bar", title: "Last 28 days" }, stripes) : null,
+        state.prefs.readout ? h("div", { class: "row lw-under" }, h("span", {}, "28 DAYS"), h("span", {}, `${month.filter((d) => d.logs).length} ACTIVE`)) : null,
+        h("div", { class: "lw-btns" },
+          h("button", { type: "button", class: "lw-btn go", title: "Dictate a log", onclick: () => openCompose(null, { dictate: true }) }, h("span", {}, "Dictate")),
+          h("button", { type: "button", class: "lw-btn", title: "Record audio", onclick: () => openCompose(null, { record: true }) }, h("span", {}, "Record")),
+          h("button", { type: "button", class: "lw-btn alt", title: "Write an entry", onclick: () => openCompose(null) }, h("span", {}, "Write")),
+          h("button", { type: "button", class: "lw-btn dim", title: "Settings", onclick: () => go("settings") }, h("span", {}, T("Settings", "Engineering"))))
+      )
+    ),
+    h("div", { class: "lw-bottom" },
+      h("div", { class: "lw-elbow bottom" }),
+      h("div", { class: "lw-topbar" }, h("span", { class: "lw-blk c" }, conditionTag((state.entries[0] || {}).condition || "calm")), h("span", { class: "lw-fill" }), h("span", { class: "lw-blk a" }, (state.ship.registry || "NX-0000").toUpperCase()), h("span", { class: "lw-cap" })))
+  );
 }
 
 function LogsScreen() {
-  if (state.skin === "glass") return TileHome();
+  if (state.skin === "glass" || (WIDE.matches && PANEL_SKINS.includes(state.skin))) return TileHome();
+  if (state.skin === "console" && WIDE.matches) return ConsoleWide();
+  if (state.skin === "command") return WIDE.matches ? CommandConsole() : CommandHome();
   const latest = state.entries[0];
   const [, , condColor] = condition(latest ? latest.condition : "calm");
   const now = new Date();
@@ -808,7 +1242,7 @@ function LogsScreen() {
         h("button", { type: "button", class: "small-btn icon-btn", "aria-label": "Settings and backup", onclick: () => go("settings") }, svg(ICON.gear))
       ),
       h("div", { class: "row" },
-        h("div", { class: "muted" }, `Log date ${stardate(now).toFixed(1)} · ${formatDate(now)}`),
+        h("div", { class: "muted" }, dateLine(currentStardate(), now)),
         h("span", { class: "chip", title: conditionTag(latest ? latest.condition : "calm"), style: { "--c": condColor } }, conditionTag(latest ? latest.condition : "calm"))
       )
     ),
@@ -864,6 +1298,71 @@ function applySettings(json) {
 
 async function loadBackupStatus() {
   try { backupUi.status = await api.backupStatus(); } catch { backupUi.status = null; }
+  try { backupUi.location = await api.dataLocation(); } catch { backupUi.location = null; }
+}
+
+async function doMakePortable() {
+  if (!backupUi.portableArmed) { backupUi.portableArmed = true; render(); return; }
+  backupUi.portableArmed = false;
+  backupUi.error = ""; backupUi.message = "";
+  try {
+    const dest = await api.makePortable();
+    backupUi.message = `Your log was copied to ${dest}. Restart Ship's Log to start using it there. Keep the folder next to the app when you move them (for example to a USB drive).`;
+    backupUi.needsRestart = true;
+  } catch (e) { backupUi.error = String(e); }
+  render();
+}
+
+async function doMoveData(toDocuments) {
+  const key = toDocuments ? "docs" : "standard";
+  if (backupUi.moveArmed !== key) { backupUi.moveArmed = key; render(); return; }
+  backupUi.moveArmed = "";
+  backupUi.error = ""; backupUi.message = "";
+  try {
+    const dest = await api.moveData(toDocuments);
+    backupUi.message = `Your log was copied to ${dest}. Restart Ship's Log to start using it there. The old copy stays where it was, with a MOVED.txt note, until you delete it.`;
+    backupUi.needsRestart = true;
+  } catch (e) { backupUi.error = String(e); }
+  render();
+}
+
+const fileManagerName = () => /Mac/i.test(navigator.userAgent) ? "Finder" : /Windows/i.test(navigator.userAgent) ? "File Explorer" : "the file manager";
+
+/** Where the log lives, with Show in Finder, Move to Documents and the portable option on computers. */
+function LocationCard() {
+  const loc = backupUi.location;
+  if (!loc) return null;
+  const computer = canAutoBackup();
+  return h("section", { class: "card settings-card" },
+    h("h2", { class: "h2" }, T("Where your log is kept", "Ship's computer core")),
+    h("p", {}, loc.portable ? "Portable: everything is kept in the folder beside the app."
+      : loc.in_documents ? "Everything (logs, recordings, photos, video and settings) is kept in your Documents folder:"
+      : "Everything (logs, recordings, photos, video and settings) is kept in the app's standard data folder:"),
+    h("div", { class: "small path" }, loc.path),
+    computer ? h("button", { type: "button", class: "small-btn", onclick: () => api.showDataFolder().catch((e) => { backupUi.error = String(e); render(); }) },
+      svg(ICON.folder), `Show in ${fileManagerName()}`) : null,
+    backupUi.needsRestart ? h("button", { type: "button", class: "primary", onclick: () => api.restartApp() }, T("Restart now", "Engage")) : null,
+    computer && !loc.portable && !backupUi.needsRestart
+      ? (loc.in_documents
+          ? [
+              h("p", { class: "small" }, "Move it back to the app's standard data folder, which is hidden so it can't be moved or deleted by accident."),
+              h("button", { type: "button", class: "small-btn" + (backupUi.moveArmed === "standard" ? " danger" : ""), onclick: () => doMoveData(false) },
+                backupUi.moveArmed === "standard" ? "Tap again to move it back" : "Move back to the standard folder"),
+            ]
+          : [
+              h("p", { class: "small" }, `Or keep it in your Documents folder (${loc.documents_path}), where you can see it. If Documents is synced (iCloud Drive, OneDrive), the log is synced too; don't use the app on two computers with the same synced log at once.`),
+              h("button", { type: "button", class: "small-btn" + (backupUi.moveArmed === "docs" ? " danger" : ""), onclick: () => doMoveData(true) },
+                backupUi.moveArmed === "docs" ? "Tap again to move it to Documents" : "Move to Documents"),
+            ])
+      : null,
+    computer && !loc.portable && !backupUi.needsRestart
+      ? [
+          h("p", { class: "small" }, `To make the app portable, for example to run it from a USB drive, it keeps its log in a folder named “${loc.portable_folder}” right next to the app. This copies your log there.`,
+            loc.app_folder ? ` The app is in ${loc.app_folder}.` : ""),
+          h("button", { type: "button", class: "small-btn" + (backupUi.portableArmed ? " danger" : ""), onclick: doMakePortable },
+            svg(ICON.folder), backupUi.portableArmed ? "Tap again to copy the log beside the app" : T("Make portable", "Engage portable mode")),
+        ]
+      : null);
 }
 
 const daysSince = (secs) => Math.floor((Date.now() / 1000 - secs) / 86400);
@@ -981,8 +1480,27 @@ function DisplayOptions() {
       }[p.alertMode])
     ),
 
+    h("div", { class: "stack" },
+      h("span", { class: "label", id: "dates-label" }, T("Dates", "Stardates")),
+      h("div", { class: "segment", role: "group", "aria-labelledby": "dates-label" },
+        [["both", "Both"], ["stardate", "Stardate"], ["calendar", "Calendar"]].map(([k, name]) =>
+          h("button", { type: "button", "aria-pressed": String(p.dateStyle === k), onclick: () => setPref("dateStyle", k) }, name)
+        )
+      ),
+      h("span", { class: "small" }, {
+        both: "Logs show a stardate and the calendar date.",
+        stardate: "Logs show only stardates; calendar dates are hidden.",
+        calendar: "Logs show only calendar dates, no stardates.",
+      }[p.dateStyle] || "")
+    ),
+    Toggle("Story mode", "For telling a story: you set each entry's stardate on the entry screen, logs are listed in stardate order, and a new entry carries on from where your story left off. Calendar dates are hidden.", "storyMode"),
+
     state.skin === "glass" ? Toggle("Clear glass", "Glass skin: see-through tiles with no tint", "glassClear") : null,
-    Toggle("Ship terms", "Names like Bridge, Engineering and Sick Bay. Turn off for plain labels.", "shipTerms"),
+    Toggle("Ship terms", "Names like Bridge, Engineering and Sick Bay, and buttons like Make it so and Energize. Turn off for plain labels.", "shipTerms"),
+    Toggle("Spoken commands", "While dictating, say “make it so”, “engage” or “punch it” at the end to save, “belay that” to take back the last words, or “stand down” to stop listening.", "voiceCommands"),
+    WIDE.matches && PANEL_SKINS.includes(state.skin)
+      ? h("button", { type: "button", class: "small-btn", onclick: () => { state.arranging = true; go("logs"); } }, svg(ICON.grid), "Arrange the home screen")
+      : null,
     Toggle(T("Activity readout", "Ship's Status"), T("A graph of your last 7 days on the Logs screen", "A graph of your last 7 days on the Bridge"), "readout"),
     Toggle("Card graphics", "A small line drawing on each log for its type", "glyphs"),
     Toggle("Icons instead of words", "Buttons and tags show icons and colors only", "iconsOnly")
@@ -1023,7 +1541,7 @@ function SettingsScreen() {
       h("h2", { class: "h2" }, T("Backup", "Transporter Room")),
       h("p", {}, "A backup is one file with all your logs, recordings, photos, videos and settings. Keep it somewhere safe, like iCloud Drive, Dropbox or a USB drive."),
       h("div", { class: "small", style: { color: s.lastBackup ? "var(--accent2)" : "var(--caution)" } }, lastBackupText(s)),
-      h("button", { type: "button", class: "primary", disabled: busy, onclick: doBackup }, svg(ICON.save), backupUi.busy === "Backing up…" ? "Backing up…" : T("Back up now", "Beam out a backup")),
+      h("button", { type: "button", class: "primary", disabled: busy, onclick: doBackup }, svg(ICON.save), backupUi.busy === "Backing up…" ? "Backing up…" : T("Back up now", "Energize")),
       backupUi.message ? h("div", { class: "notice" }, backupUi.message) : null,
       backupUi.error ? h("div", { class: "notice", style: { "border-color": "var(--critical)", color: "var(--critical)" } }, backupUi.error) : null
     ),
@@ -1056,6 +1574,8 @@ function SettingsScreen() {
           )
         )
       : null,
+
+    LocationCard(),
 
     h("section", { class: "card settings-card" },
       h("h2", { class: "h2" }, "Ship's details"),
@@ -1245,6 +1765,42 @@ const SPOKEN = [
   [/\s*\bcolon\b/gi, ":"],
 ];
 
+/*
+  Spoken commands, in ship phrases, said at the end of what you dictate:
+  save ("make it so", "engage", "punch it", "computer, save"),
+  take back the last words ("belay that", "scratch that"),
+  stop listening ("stand down", "end transmission").
+*/
+const VOICE_COMMANDS = [
+  ["save", /(?:^|[\s,.!?])(?:make it so|engage|punch it|(?:computer,?\s*)?(?:save|commit) (?:the |this )?(?:log|entry)|computer,? save)[\s.!?]*$/i],
+  ["undo", /(?:^|[\s,.!?])(?:belay that(?: order)?|scratch that)[\s.!?]*$/i],
+  ["stop", /(?:^|[\s,.!?])(?:stand down|end transmission|computer,? stop)[\s.!?]*$/i],
+];
+const voiceAction = { save: null }; // set by the entry screen
+let lastDictated = "";
+
+/** A command at the end of a spoken phrase: its kind, and any words said before it. */
+function voiceCommand(transcript) {
+  for (const [kind, re] of VOICE_COMMANDS) {
+    const m = transcript.match(re);
+    if (m) return { kind, text: transcript.slice(0, m.index).trim() };
+  }
+  return null;
+}
+
+function runVoiceCommand(kind) {
+  const d = state.draft;
+  if (kind === "undo" && d) {
+    if (lastDictated && d.body.endsWith(lastDictated)) d.body = d.body.slice(0, -lastDictated.length).replace(/[ \t]+$/, "");
+    lastDictated = "";
+    const ta = document.getElementById("entry-body");
+    if (ta) ta.value = d.body;
+    return;
+  }
+  if (kind === "stop") { stopDictation(); return; }
+  if (kind === "save" && voiceAction.save && state.screen === "compose") voiceAction.save();
+}
+
 function appendDictated(d, chunk) {
   for (const [re, sub] of SPOKEN) chunk = chunk.replace(re, sub);
   chunk = chunk.replace(/^[ \t]+|[ \t]+$/g, "");
@@ -1254,6 +1810,7 @@ function appendDictated(d, chunk) {
   if (!body.trim() || /[.!?\n]\s*$/.test(body)) chunk = chunk[0].toUpperCase() + chunk.slice(1);
   const sep = !body || /\s$/.test(body) || /^[.,!?:\n]/.test(chunk) ? "" : " ";
   d.body = body + sep + chunk;
+  lastDictated = sep + chunk;
   const ta = document.getElementById("entry-body");
   if (ta) { ta.value = d.body; ta.scrollTop = ta.scrollHeight; }
 }
@@ -1283,7 +1840,16 @@ function startDictation() {
     let interim = "";
     for (let i = ev.resultIndex; i < ev.results.length; i++) {
       const r = ev.results[i];
-      if (r.isFinal) appendDictated(state.draft, r[0].transcript);
+      if (r.isFinal) {
+        const cmd = state.prefs.voiceCommands ? voiceCommand(r[0].transcript) : null;
+        if (cmd) {
+          if (cmd.text) appendDictated(state.draft, cmd.text);
+          dictation.interim = ""; showInterim();
+          runVoiceCommand(cmd.kind);
+          return;
+        }
+        appendDictated(state.draft, r[0].transcript);
+      }
       else interim += r[0].transcript;
     }
     dictation.interim = interim;
@@ -1343,14 +1909,16 @@ function DictationSection(d) {
       h("label", { class: "label", for: "entry-body" }, "Entry"),
       dictation.active
         ? h("button", { type: "button", class: "small-btn danger", onclick: stopDictation },
-            h("span", { class: "rec-dot", "aria-hidden": "true" }), "Listening", svg(ICON.stop), "Stop")
+            h("span", { class: "rec-dot", "aria-hidden": "true" }), "Listening", svg(ICON.stop), T("Stop", "Stand down"))
         : h("button", { type: "button", class: "small-btn filled", onclick: startDictation }, svg(ICON.mic), "Dictate")
     ),
     dictation.hint ? h("div", { class: "notice" }, dictation.hint) : null,
-    h("textarea", { id: "entry-body", class: "field", placeholder: "Personal log, supplemental…", value: d.body, oninput: set }),
+    h("textarea", { id: "entry-body", class: "field", placeholder: "Personal log, supplemental…", value: d.body, oninput: set,
+      onkeydown: (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); voiceAction.save && voiceAction.save(); } } }),
     h("div", { id: "dictation-live", class: "small live", hidden: !dictation.interim }, dictation.interim),
     dictation.active
-      ? h("div", { class: "small" }, "Say “new paragraph”, “period” or “comma” for punctuation.")
+      ? h("div", { class: "small" }, "Say “new paragraph”, “period” or “comma” for punctuation.",
+          state.prefs.voiceCommands ? " Say “make it so”, “engage” or “punch it” to save, “belay that” to take back the last words, “stand down” to stop listening." : "")
       : null
   );
 }
@@ -1637,10 +2205,12 @@ function openCompose(entry, opts = {}) {
   state.draft = entry
     ? { ...entry, crewText: (entry.crew || []).join(", "), recordings: [...(entry.recordings || [])], media: (entry.media || []).map((m) => ({ ...m })) }
     : {
-        id: "", created: now.toISOString(), stardate: stardate(now),
+        id: "", created: now.toISOString(), stardate: nextStardate(),
         logType: "personal", condition: "calm", title: "", body: "",
         crewText: "", place: "", locked: false, recordings: [], media: [],
       };
+  if (opts.title) state.draft.title = opts.title;
+  if (opts.body) state.draft.body = opts.body;
   Object.assign(state.draft, { newFiles: [], removedFiles: [], newMediaFiles: [], removedMediaFiles: [], pending: [] });
   state.deleteArmed = false;
   recorder.error = "";
@@ -1696,11 +2266,14 @@ function ComposeScreen() {
         ({ kind, file, original, thumb, mime, width: width || 0, height: height || 0, seconds: seconds || 0, bytes: bytes || 0 })),
     };
     await api.save(entry);
+    if (isNew) state.pad = { title: "", body: "" };
     for (const f of d.removedFiles) await api.deleteAudio(f).catch(() => {});
     for (const f of d.removedMediaFiles) await api.deleteMedia(f).catch(() => {});
     await refresh();
     go("logs");
   }
+
+  voiceAction.save = () => save();
 
   async function remove() {
     if (!state.deleteArmed) { state.deleteArmed = true; render(); return; }
@@ -1720,9 +2293,13 @@ function ComposeScreen() {
       h("button", { type: "button", class: "small-btn icon-btn", "aria-label": "Back to logs", onclick: closeCompose }, svg(ICON.back)),
       h("div", { class: "stack", style: { "align-items": "center", gap: "2px" } },
         h("span", { class: "h2", style: { color: "var(--accent)" } }, T(isNew ? "New entry" : "Edit entry", "Ready Room")),
-        h("span", { class: "small" }, `Log date ${d.stardate.toFixed(1)} · ${formatDate(new Date(d.created))}`)
+        state.prefs.storyMode
+          ? h("label", { class: "small sd-edit", title: "This entry's stardate in your story" }, T("Log date", "Stardate"), " ",
+              h("input", { type: "number", step: "0.1", class: "sd-input", value: sd1(d.stardate), "aria-label": "Stardate",
+                oninput: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) d.stardate = Math.round(v * 10) / 10; } }))
+          : h("span", { class: "small" }, dateLine(d.stardate, new Date(d.created)))
       ),
-      h("button", { type: "button", class: "small-btn filled", onclick: save }, "Save")
+      h("button", { type: "button", class: "small-btn filled", title: "Save (Ctrl or ⌘ + Enter)", onclick: save }, T("Save", "Make it so"))
     ),
 
     h("div", { class: "stack" },
@@ -1773,7 +2350,7 @@ function ComposeScreen() {
         onclick: () => { d.locked = !d.locked; render(); },
       }, svg(ICON.lock), d.locked ? T("Hidden from search", "Security clearance on") : T("Hide from search", "Set security clearance")),
       isNew ? null : h("button", { type: "button", class: "small-btn danger", onclick: remove },
-        state.deleteArmed ? "Tap again to delete" : "Delete")
+        state.deleteArmed ? T("Tap again to delete", "Confirm: jettison") : T("Delete", "Jettison"))
     ),
   ];
 }
@@ -1785,7 +2362,7 @@ function SearchScreen() {
 
   async function run() {
     const q = state.query.trim();
-    const hits = await api.search(q, state.queryType);
+    const hits = inOrder(await api.search(q, state.queryType));
     countEl.textContent = `${hits.length} ${hits.length === 1 ? "log matches" : "logs match"}`;
     results.replaceChildren(
       ...(hits.length ? hits.map((e) => EntryCard(e, q)) : [h("div", { class: "empty" }, "No logs match.")])

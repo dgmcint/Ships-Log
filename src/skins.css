@@ -243,3 +243,12 @@
   --sky-top: #000307; --sky-mid: #00070d; --sky-low: #001a22; --panel: rgba(0, 6, 10, 0.86);
   --font: "Oxanium", system-ui, sans-serif;
 }
+
+/* Command: steel-blue glass panels and message-style log lists. */
+:root[data-skin="command"] {
+  --bg: #0b1a2a; --panel: rgba(120, 175, 215, 0.14); --line: rgba(170, 225, 255, 0.55);
+  --text: #eef8ff; --muted: #a9c6dc; --accent: #8fd8ff; --on-accent: #06192a; --accent2: #e9f6ff;
+  --orange: #f2a84a; --caution: #f5d36a; --critical: #ff7a6b; --radius: 10px; --pip: 999px;
+  --font: "Rajdhani", "Oxanium", system-ui, sans-serif; --tracking: 0.06em; --case: uppercase;
+  --sea: rgba(4, 16, 28, .6); --grid: rgba(170, 225, 255, .14); --land: rgba(143, 216, 255, .10); --coast: #8fd8ff;
+}

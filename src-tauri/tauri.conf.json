@@ -12,8 +12,8 @@
       {
         "label": "main",
         "title": "Ship's Log",
-        "width": 430,
-        "height": 900,
+        "width": 1280,
+        "height": 860,
         "minWidth": 360,
         "minHeight": 600
       }
